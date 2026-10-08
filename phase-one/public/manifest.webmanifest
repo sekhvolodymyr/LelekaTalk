@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "LelekaTalk",
+  "short_name": "LelekaTalk",
+  "lang": "uk",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f9f9f9",
+  "icons": [
+    { "src": "/logo.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

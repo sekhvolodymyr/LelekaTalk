@@ -1,0 +1,15 @@
+# Local accounts, messages, keys and dependencies
+data/
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+
+# Local tools and operating system files
+.codex/
+.agents/
+.aws/
+.DS_Store
+Thumbs.db
+desktop.ini

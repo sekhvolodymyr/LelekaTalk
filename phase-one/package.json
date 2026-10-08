@@ -1,0 +1,17 @@
+{
+  "name": "lelekatalk-phase-one",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "LelekaTalk local MVP: encrypted messaging, channels, feed, calendar and habits",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "openpgp": "^6.3.2"
+  }
+}
