@@ -1,0 +1,14 @@
+{
+  "name": "lelekatalk",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["phase-one"],
+  "engines": { "node": "24.x" },
+  "scripts": {
+    "start": "npm start --workspace=phase-one",
+    "start:cloud": "node server.mjs",
+    "test": "npm test --workspace=phase-one && node --test tests/*.test.mjs"
+  },
+  "dependencies": { "pg": "^8.16.3" }
+}

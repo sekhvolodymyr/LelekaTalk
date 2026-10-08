@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "functions": {
+    "api/index.mjs": {
+      "includeFiles": "{phase-one/public/**,**/node_modules/openpgp/dist/openpgp.min.mjs}",
+      "maxDuration": 30
+    }
+  },
+  "routes": [{ "src": "/(.*)", "dest": "/api/index?__route=$1" }]
+}

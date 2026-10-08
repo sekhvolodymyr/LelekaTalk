@@ -11,17 +11,17 @@ const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const BODY_LIMIT = 128 * 1024;
 const hash = value => createHash('sha256').update(value).digest('hex');
 
-export function createApp({ dataDirectory = path.join(directory, 'data'), logoPath = process.env.LELEKA_LOGO ?? 'C:/Users/volod/Desktop/LelekaTalk/Leleka Talk logo.png' } = {}) {
-  mkdirSync(dataDirectory, { recursive: true });
+export function createApp({ dataDirectory = path.join(directory, 'data'), logoPath = process.env.LELEKA_LOGO ?? 'C:/Users/volod/Desktop/LelekaTalk/Leleka Talk logo.png', managedDatabase, onPersist, allowedOrigins = [], secureCookies = false, rateLimits = new Map(), clientAddress } = {}) {
+  if (!managedDatabase) mkdirSync(dataDirectory, { recursive: true });
   const databasePath = path.join(dataDirectory, 'accounts.json');
-  const database = existsSync(databasePath)
+  const database = managedDatabase ?? (existsSync(databasePath)
     ? JSON.parse(readFileSync(databasePath, 'utf8'))
-    : { version: 1, users: [], sessions: [] };
+    : { version: 1, users: [], sessions: [] });
   if (database.version !== 1 || !Array.isArray(database.users) || !Array.isArray(database.sessions)) {
     throw new Error('Unsupported account database. Preserve the file before repairing it.');
   }
-  const rateLimits = new Map();
   const persist = () => {
+    if (managedDatabase) { onPersist?.(database); return; }
     const temporaryPath = `${databasePath}.tmp`;
     writeFileSync(temporaryPath, JSON.stringify(database, null, 2), { mode: 0o600 });
     renameSync(temporaryPath, databasePath);
@@ -55,7 +55,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     database.sessions = database.sessions.filter(item => item.expiresAt > Date.now());
     database.sessions.push({ tokenHash: hash(token), userId: user.id, expiresAt: Date.now() + SESSION_SECONDS * 1000 });
     persist();
-    return `leleka_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_SECONDS}`;
+    return `leleka_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_SECONDS}${secureCookies ? '; Secure' : ''}`;
   }
   async function readBody(request) {
     if (!(request.headers['content-type'] ?? '').startsWith('application/json')) throw fail(415, 'json_required');
@@ -75,7 +75,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     }
   }
   function checkRate(request) {
-    const key = request.socket.remoteAddress ?? 'local';
+    const key = clientAddress?.(request) ?? request.socket.remoteAddress ?? 'local';
     const now = Date.now();
     for (const [address, entry] of rateLimits) if (entry.until <= now) rateLimits.delete(address);
     const entry = rateLimits.get(key) ?? { count: 0, until: now + 60_000 };
@@ -106,11 +106,13 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     try {
       const host = request.headers.host;
-      if (!host || !/^(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(host)) throw fail(403, 'local_only');
-      const url = new URL(request.url, `http://${host}`);
+      const cloudOrigin = allowedOrigins.find(origin => new URL(origin).host === host);
+      if (!host || (!cloudOrigin && !/^(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(host))) throw fail(403, 'local_only');
+      const expectedOrigin = cloudOrigin ?? `http://${host}`;
+      const url = new URL(request.url, expectedOrigin);
       const route = url.pathname;
       if (['POST', 'PATCH', 'DELETE'].includes(request.method)) {
-        if (request.headers.origin !== `http://${host}`) throw fail(403, 'invalid_origin');
+        if (request.headers.origin !== expectedOrigin) throw fail(403, 'invalid_origin');
       }
       if (route === '/api/register' && request.method === 'POST') {
         checkRate(request);
@@ -170,14 +172,14 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
         const token = /(?:^|;\s*)leleka_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie ?? '')?.[1];
         if (token) database.sessions = database.sessions.filter(item => item.tokenHash !== hash(token));
         persist();
-        return send(response, 200, { ok: true }, { 'Set-Cookie': 'leleka_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
+        return send(response, 200, { ok: true }, { 'Set-Cookie': `leleka_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies ? '; Secure' : ''}` });
       }
       if (await mvpRouter(request, response, url)) return;
       if (route.startsWith('/api/')) throw fail(404, 'not_found');
       if (request.method !== 'GET' && request.method !== 'HEAD') throw fail(405, 'method_not_allowed');
       let assetPath, contentType;
       if (route === '/vendor/openpgp.min.mjs') {
-        assetPath = path.join(directory, 'node_modules', 'openpgp', 'dist', 'openpgp.min.mjs');
+        assetPath = fileURLToPath(new URL('../openpgp.min.mjs', import.meta.resolve('openpgp')));
         contentType = 'text/javascript; charset=utf-8';
       } else if (route === '/logo.png') {
         const bundled = path.join(publicDirectory, 'logo.png');

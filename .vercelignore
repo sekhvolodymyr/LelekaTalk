@@ -1,0 +1,7 @@
+.git
+**/data
+**/node_modules
+**/.env*
+**/*.log
+phase-one/design
+**/tests

@@ -10,6 +10,10 @@ node_modules/
 .codex/
 .agents/
 .aws/
+.vercel/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+.vercel
+.env*
