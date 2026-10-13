@@ -1,4 +1,4 @@
-const CACHE = 'lelekatalk-shell-v3';
+const CACHE = 'lelekatalk-shell-v4';
 const ASSETS = ['/', '/styles.css', '/app.js', '/mvp.js', '/crypto.js', '/push.js', '/emoji.js', '/vendor/openpgp.min.mjs', '/logo.png', '/icon.svg', '/manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));

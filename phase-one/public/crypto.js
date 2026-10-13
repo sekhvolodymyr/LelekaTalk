@@ -5,11 +5,26 @@ const decoder = new TextDecoder();
 const keyCache = new Map();
 let session = null;
 let serverClock;
+let clockSync;
 // Derive crypto timestamps from the server and a monotonic timer, rather than
 // the device's wall clock. Backdate creation slightly for network transit.
 function cryptoDate(creating = false) {
   if (!serverClock) throw new Error('keys_required');
   return new Date(serverClock.time + performance.now() - serverClock.started - (creating ? 5000 : 0));
+}
+async function synchronizeClock() {
+  if (!session?.api) throw new Error('keys_required');
+  if (clockSync) return clockSync;
+  const current = session;
+  const operation = (async () => {
+    const { serverTime } = await current.api('mvp/time');
+    if (session !== current) throw new Error('keys_locked');
+    if (!Number.isSafeInteger(serverTime)) throw new Error('server_time_required');
+    serverClock = { time: serverTime, started: performance.now() };
+    return cryptoDate();
+  })();
+  clockSync = operation;
+  try { return await operation; } finally { if (clockSync === operation) clockSync = null; }
 }
 async function storage(mode, operation) {
   const database = await new Promise((resolve, reject) => {
@@ -48,6 +63,7 @@ function recoverySecret() {
 }
 export async function openSession(user, api) {
   session = null;
+  clockSync = null;
   keyCache.clear();
   if (!window.isSecureContext || !crypto.subtle) throw new Error('secure_context_required');
   const { vault, serverTime } = await api('mvp/crypto');
@@ -58,14 +74,14 @@ export async function openSession(user, api) {
       if (error.message === 'key_changed') throw error;
       return null;
     });
-    session = { userId: user.id, vault, privateKey };
+    session = { userId: user.id, vault, privateKey, api };
     return { locked: !privateKey };
   }
   const recoveryCode = recoverySecret();
   const generated = await openpgp.generateKey({ type: 'ecc', curve: 'curve25519', userIDs: [{ name: `@${user.username}` }], passphrase: recoveryCode, format: 'armored', date: cryptoDate(true) });
   const result = await api('mvp/crypto', { method: 'POST', body: { publicKey: generated.publicKey, encryptedPrivateKey: generated.privateKey } });
   const privateKey = await openpgp.decryptKey({ privateKey: await openpgp.readPrivateKey({ armoredKey: generated.privateKey }), passphrase: recoveryCode });
-  session = { userId: user.id, vault: result.vault, privateKey };
+  session = { userId: user.id, vault: result.vault, privateKey, api };
   let remembered = true;
   try { await saveDevice(user.id, privateKey, result.vault.fingerprint); } catch { remembered = false; }
   return { locked: false, recoveryCode, remembered };
@@ -86,6 +102,7 @@ export function unlocked() { return Boolean(session?.privateKey); }
 export async function closeSession(userId) {
   session = null;
   serverClock = null;
+  clockSync = null;
   keyCache.clear();
   await storage('readwrite', store => store.delete(userId));
 }
@@ -104,11 +121,15 @@ async function publicKey(person) {
 export async function encryptEnvelope(envelope, recipients = [ownIdentity()]) {
   if (!unlocked()) throw new Error('keys_locked');
   const identities = [...new Map([...recipients, ownIdentity()].map(person => [person.id, person])).values()];
+  await synchronizeClock();
   return openpgp.encrypt({ message: await openpgp.createMessage({ text: JSON.stringify(envelope) }), encryptionKeys: await Promise.all(identities.map(publicKey)), signingKeys: session.privateKey, format: 'armored', date: cryptoDate(true) });
 }
-export async function decryptEnvelope(ciphertext, sender, expected) {
+export async function decryptEnvelope(ciphertext, sender, expected, serverTime) {
   if (!unlocked()) throw new Error('keys_locked');
-  const result = await openpgp.decrypt({ message: await openpgp.readMessage({ armoredMessage: ciphertext }), decryptionKeys: session.privateKey, verificationKeys: await publicKey(sender), expectSigned: true, format: 'utf8', date: cryptoDate(), config: { maxDecompressedMessageSize: 96_000 } });
+  // Use the authenticated read response's time. A tab's projected clock can
+  // become stale after sleep; never disable signature verification to compensate.
+  const date = Number.isSafeInteger(serverTime) ? new Date(serverTime) : await synchronizeClock();
+  const result = await openpgp.decrypt({ message: await openpgp.readMessage({ armoredMessage: ciphertext }), decryptionKeys: session.privateKey, verificationKeys: await publicKey(sender), expectSigned: true, format: 'utf8', date, config: { maxDecompressedMessageSize: 96_000 } });
   if (result.signatures.length === 0) throw new Error('invalid_signature');
   await result.signatures[0].verified;
   if (typeof result.data !== 'string' || result.data.length > 32_000) throw new Error('invalid_payload');

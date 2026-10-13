@@ -94,16 +94,19 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     const result = await request(`chats/${id}/messages${query}`);
     if (generation !== epoch || s.selectedChat !== id) return;
     s.chats = s.chats.map(item => item.id === id ? result.chat : item);
-    const values = await Promise.all(result.messages.map(async message => {
+    const readTime = Number.isSafeInteger(result.serverTime) ? result.serverTime : Date.now();
+    const retry = s.messages.filter(message => message.failed && (message.retryAfter ?? 0) <= readTime);
+    const pending = [...new Map([...retry, ...result.messages].map(message => [message.id, message])).values()];
+    const values = await Promise.all(pending.map(async message => {
       const cached = decrypted.get(message.id);
       try {
         const sender = result.chat.members.find(member => member.id === message.senderId);
         if (!sender) throw new Error('invalid_signature');
-        const payload = cached?.ciphertext === message.ciphertext ? cached.value : await encryption.decryptEnvelope(message.ciphertext, sender, { kind: 'message', id: message.id, chatId: message.chatId, senderId: message.senderId });
+        const payload = cached?.ciphertext === message.ciphertext ? cached.value : await encryption.decryptEnvelope(message.ciphertext, sender, { kind: 'message', id: message.id, chatId: message.chatId, senderId: message.senderId }, result.serverTime);
         if (typeof payload.text !== 'string' || payload.text.length > 4000) throw new Error('invalid_payload');
         decrypted.set(message.id, { ciphertext: message.ciphertext, value: payload });
-        return { ...message, text: payload.text, senderName: sender.name };
-      } catch { return { ...message, text: t('invalidMessage'), senderName: '', failed: true }; }
+        return { ...message, text: payload.text, senderName: sender.name, failed: false };
+      } catch { return { ...message, text: t('invalidMessage'), senderName: '', failed: true, retryAfter: readTime + 10_000 }; }
     }));
     if (generation !== epoch || s.selectedChat !== id) return;
     s.messages = [...new Map([...s.messages, ...values].map(message => [message.id, message])).values()].sort((a, b) => a.seq - b.seq);
@@ -128,12 +131,12 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
       const current = selected();
       if (old && !current) { s.selectedChat = null; s.messages = []; if (!dialog.open) redraw(); return; }
       if (current && getState().view === 'chats' && encryption.unlocked()) {
-        const oldCount = s.messages.length;
+        const oldMessages = s.messages.map(message => `${message.id}:${Boolean(message.failed)}`).join(',');
         await readMessages();
         if (generation !== epoch) return;
         const newState = `${current.revision}:${current.myStatus}:${current.ready}:${current.blocked}`;
         if (oldState !== newState && !dialog.open) redraw();
-        else if (s.messages.length !== oldCount) {
+        else if (s.messages.map(message => `${message.id}:${Boolean(message.failed)}`).join(',') !== oldMessages) {
           const list = document.querySelector('#mvp-messages');
           if (list) { list.innerHTML = messagesHTML(); list.scrollTop = list.scrollHeight; }
         }

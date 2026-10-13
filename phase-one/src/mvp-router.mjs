@@ -102,6 +102,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
       persist(); return reply(201, { ok: true });
     }
 
+    if (pathname === '/time' && method === 'GET') return reply(200, { serverTime: Date.now() });
     if (pathname === '/crypto' && method === 'GET') return reply(200, { vault: user.crypto ?? null, serverTime: Date.now() });
     if (pathname === '/crypto' && method === 'POST') {
       if (user.crypto) throw fail(409, 'key_already_enrolled');
@@ -195,7 +196,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
         const before = Number(url.searchParams.get('before') ?? Number.MAX_SAFE_INTEGER);
         if (!Number.isSafeInteger(after) || !Number.isSafeInteger(before) || after < 0 || before < 1) throw fail(400, 'invalid_cursor');
         const messages = db.messages.filter(message => message.chatId === chat.id && message.audience.includes(user.id) && message.seq > after && message.seq < before);
-        return reply(200, { messages: messages.slice(-100), hasMore: messages.length > 100, chat: chatDTO(chat, user) });
+        return reply(200, { messages: messages.slice(-100), hasMore: messages.length > 100, chat: chatDTO(chat, user), serverTime: Date.now() });
       }
       if (action === 'messages' && method === 'POST') {
         if (!user.crypto || !chat.members.every(member => member.status !== 'invited' || chat.type === 'group')) throw fail(403, 'invitation_required');
