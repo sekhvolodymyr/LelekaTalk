@@ -6,7 +6,7 @@ const words = {
     email: 'Email', password: 'Пароль', name: 'Твоє ім’я', username: 'Ім’я користувача',
     passwordHint: 'Щонайменше 12 символів', age: 'Мені виповнилося 16 років',
     noAccount: 'Ще немає акаунта?', hasAccount: 'Уже маєш акаунт?', working: 'Зачекай…',
-    localNotice: 'Локальна збірка · підтвердження email ще не підключене',
+    localNotice: 'MVP · підтвердження email ще не підключене',
     chats: 'Чати', feed: 'Стрічка', communities: 'Спільноти', space: 'Мій простір', studio: 'Креативна студія', assistant: 'ШІ-помічник',
     subscriptions: 'Підписки', forYou: 'Для вас', personal: 'Особистий профіль', creator: 'Профіль креатора',
     newChat: 'Новий чат', search: 'Пошук розмов', noChats: 'Тут з’являться твої розмови', noChatsHint: 'Почни з налаштування свого профілю.',
@@ -39,7 +39,7 @@ const words = {
     welcome: 'Welcome back', createAccount: 'Create your own space', login: 'Log in', register: 'Create account',
     email: 'Email', password: 'Password', name: 'Your name', username: 'Username', passwordHint: 'At least 12 characters', age: 'I am at least 16 years old',
     noAccount: 'New here?', hasAccount: 'Already have an account?', working: 'Please wait…',
-    localNotice: 'Local build · email verification is not connected yet',
+    localNotice: 'MVP · email verification is not connected yet',
     chats: 'Chats', feed: 'Feed', communities: 'Communities', space: 'My space', studio: 'Creative studio', assistant: 'AI assistant',
     subscriptions: 'Following', forYou: 'For you', personal: 'Personal profile', creator: 'Creator profile',
     newChat: 'New chat', search: 'Search conversations', noChats: 'Your conversations will appear here', noChatsHint: 'Start by setting up your profile.',
@@ -173,6 +173,7 @@ async function submitAuth(event) {
     errorElement.hidden = false;
   } finally {
     state.busy = false;
+    mvp.syncBusyControls();
     button.disabled = false;
     button.textContent = text(registration ? 'register' : 'login');
   }
@@ -240,7 +241,7 @@ function openSettings() {
       renderShell();
       toast(text('saved'));
     } catch (error) { errorElement.textContent = error.message; errorElement.hidden = false; }
-    finally { state.busy = false; button.disabled = false; }
+    finally { state.busy = false; mvp.syncBusyControls(); button.disabled = false; }
   });
 }
 document.addEventListener('click', async event => {
@@ -278,13 +279,13 @@ document.addEventListener('click', async event => {
       state.user = result.user;
       renderShell();
     } catch (error) { toast(error.message); }
-    finally { state.busy = false; }
+    finally { state.busy = false; mvp.syncBusyControls(); }
   }
   if (action === 'logout') {
     state.busy = true;
     try { await api('logout', { method: 'POST' }); await mvp.stop(state.user.id); state.user = null; dialog.close(); renderAuth(); }
     catch (error) { toast(error.message); }
-    finally { state.busy = false; }
+    finally { state.busy = false; mvp.syncBusyControls(); }
   }
 });
 document.addEventListener('keydown', event => {

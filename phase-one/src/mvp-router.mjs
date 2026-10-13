@@ -76,7 +76,7 @@ export function createMvpRouter({ database, persist, getUser, readBody, send, fa
     const method = request.method;
     const reply = (status, value) => { send(response, status, value); return true; };
 
-    if (pathname === '/crypto' && method === 'GET') return reply(200, { vault: user.crypto ?? null });
+    if (pathname === '/crypto' && method === 'GET') return reply(200, { vault: user.crypto ?? null, serverTime: Date.now() });
     if (pathname === '/crypto' && method === 'POST') {
       if (user.crypto) throw fail(409, 'key_already_enrolled');
       const body = await readBody(request);

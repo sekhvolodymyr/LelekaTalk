@@ -52,6 +52,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     if (dialog.open) dialog.close();
     dialog.innerHTML = `<div class="dialog-heading"><h2 id="mvp-dialog-title">${e(title)}</h2><button class="icon-button" data-mvp="close" aria-label="${e(appText('close'))}">${icon('close')}</button></div>${body}<p class="mvp-error form-error" role="alert" hidden></p>`;
     dialog.showModal();
+    syncBusyControls();
   }
   function privateLock() {
     return `<section class="section-empty"><span class="empty-icon">${icon('chat')}</span><h1>${e(t(s.cryptoStatus === 'loading' ? 'loading' : 'locked'))}</h1><p>${e(t('lockedHint'))}</p>${actionButton('unlock-dialog', 'unlock', '', 'primary')}<p class="field-note">${e(t('codeMissing'))}</p></section>`;
@@ -181,14 +182,24 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     dialog.querySelector('#mvp-user-search').addEventListener('submit', event => { event.preventDefault(); run(async () => { s.searchQuery = new FormData(event.target).get('query').trim(); s.groupTitle = dialog.querySelector('#mvp-group-title')?.value ?? s.groupTitle; s.users = (await request(`users?q=${encodeURIComponent(s.searchQuery)}`)).users; newChatDialog(); }); });
     dialog.querySelector('#mvp-group-title')?.addEventListener('input', event => { s.groupTitle = event.target.value; });
   }
+  function syncBusyControls() {
+    if (getState().busy) {
+      for (const button of document.querySelectorAll('button[data-action], button[data-view], button[data-feed], [data-mvp]:not([data-mvp="close"]), form[id^="mvp-"] button[type="submit"], .mvp-comment-form button[type="submit"]')) {
+        if (!button.disabled) { button.dataset.mvpBusy = 'true'; button.disabled = true; }
+      }
+    } else {
+      for (const button of document.querySelectorAll('[data-mvp-busy]')) { button.disabled = false; delete button.dataset.mvpBusy; }
+    }
+  }
   async function run(operation) {
     if (getState().busy || !getState().user) return;
     getState().busy = true;
+    syncBusyControls();
     try { await operation(); }
     catch (error) {
       const element = dialog.open ? dialog.querySelector('.mvp-error') : null;
       if (element) { element.textContent = errorText(error); element.hidden = false; } else toast(errorText(error));
-    } finally { getState().busy = false; }
+    } finally { getState().busy = false; syncBusyControls(); }
   }
   async function refreshAndRender() { await refreshData(); redraw(); }
   document.addEventListener('click', event => {
@@ -283,8 +294,10 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
       const ciphertext = await encryption.encryptEnvelope({ kind: 'habit', id, title });
       await request('habits', { method: 'POST', body: { id, ciphertext } }); await refreshAndRender();
     }); });
+    syncBusyControls();
   }
   return {
+    syncBusyControls,
     refresh: () => run(refreshAndRender),
     sidebar: () => `<div id="mvp-chat-list" class="chat-list">${sidebarHTML()}</div>`,
     open: () => getState().view === 'chats' && Boolean(s.selectedChat),

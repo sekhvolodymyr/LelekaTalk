@@ -3,7 +3,7 @@
   "regions": ["fra1"],
   "functions": {
     "api/index.mjs": {
-      "includeFiles": "{phase-one/public/**,**/node_modules/openpgp/dist/openpgp.min.mjs}",
+      "includeFiles": "{certs/**,phase-one/public/**,**/node_modules/openpgp/dist/openpgp.min.mjs}",
       "maxDuration": 30
     }
   },

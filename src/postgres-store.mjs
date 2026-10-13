@@ -1,22 +1,35 @@
 import pg from 'pg';
+import { readFileSync } from 'node:fs';
 
 export const emptyDatabase = () => ({ version: 1, users: [], sessions: [], mvp: { version: 1, chats: [], messages: [], blocks: [], channels: [], posts: [], comments: [], plans: [], habits: [], reports: [] } });
 
 // Compatibility store for the first MVP. A row lock prevents concurrent
 // serverless instances from overwriting another request's updates.
 // Large deployments should migrate the individual collections to tables.
-export function createPostgresStore(connectionString) {
-  const pool = new pg.Pool({ connectionString, max: 3, connectionTimeoutMillis: 10000, idleTimeoutMillis: 10000 });
+export function createPostgresStore(connectionString, { bootstrap = process.env.LELEKA_DATABASE_BOOTSTRAP !== 'false' } = {}) {
+  const databaseUrl = new URL(connectionString);
+  const supabase = databaseUrl.hostname.endsWith('.pooler.supabase.com');
+  if (supabase) {
+    for (const parameter of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert']) databaseUrl.searchParams.delete(parameter);
+  }
+  const pool = new pg.Pool({ connectionString: databaseUrl.toString(), ...(supabase ? { ssl: { ca: readFileSync(new URL('../certs/supabase-prod-ca-2021.crt', import.meta.url), 'utf8'), rejectUnauthorized: true } } : {}), max: 3, connectionTimeoutMillis: 10000, idleTimeoutMillis: 10000 });
   pool.on('error', () => console.error('Postgres idle connection failed.'));
   let ready;
   async function initialize() {
+    if (!bootstrap) {
+      await pool.query('SELECT id FROM leleka_private.leleka_mvp_state WHERE id = 1');
+      return;
+    }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query("SET LOCAL statement_timeout = '15000ms'");
       await client.query('SELECT pg_advisory_xact_lock(1818584929)');
-      await client.query('CREATE TABLE IF NOT EXISTS leleka_mvp_state (id integer PRIMARY KEY CHECK (id = 1), payload jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
-      await client.query('INSERT INTO leleka_mvp_state (id, payload) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING', [JSON.stringify(emptyDatabase())]);
+      await client.query('CREATE SCHEMA IF NOT EXISTS leleka_private');
+      await client.query('REVOKE ALL ON SCHEMA leleka_private FROM PUBLIC');
+      await client.query('CREATE TABLE IF NOT EXISTS leleka_private.leleka_mvp_state (id integer PRIMARY KEY CHECK (id = 1), payload jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
+      await client.query('ALTER TABLE leleka_private.leleka_mvp_state ENABLE ROW LEVEL SECURITY');
+      await client.query('INSERT INTO leleka_private.leleka_mvp_state (id, payload) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING', [JSON.stringify(emptyDatabase())]);
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
@@ -36,12 +49,12 @@ export function createPostgresStore(connectionString) {
           await client.query("SET LOCAL statement_timeout = '15000ms'");
           await client.query("SET LOCAL idle_in_transaction_session_timeout = '20000ms'");
         }
-        const result = await client.query(`SELECT payload FROM leleka_mvp_state WHERE id = 1${mutating ? ' FOR UPDATE' : ''}`);
+        const result = await client.query(`SELECT payload FROM leleka_private.leleka_mvp_state WHERE id = 1${mutating ? ' FOR UPDATE' : ''}`);
         const database = result.rows[0].payload;
         const previous = JSON.stringify(database);
         const response = await action(database);
         const next = JSON.stringify(database);
-        if (mutating && next !== previous) await client.query('UPDATE leleka_mvp_state SET payload = $1::jsonb, updated_at = now() WHERE id = 1', [next]);
+        if (mutating && next !== previous) await client.query('UPDATE leleka_private.leleka_mvp_state SET payload = $1::jsonb, updated_at = now() WHERE id = 1', [next]);
         if (transaction) { await client.query('COMMIT'); transaction = false; }
         return response;
       } catch (error) {
