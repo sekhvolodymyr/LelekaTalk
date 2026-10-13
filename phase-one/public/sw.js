@@ -1,5 +1,5 @@
-const CACHE = 'lelekatalk-shell-v4';
-const ASSETS = ['/', '/styles.css', '/app.js', '/mvp.js', '/crypto.js', '/push.js', '/emoji.js', '/vendor/openpgp.min.mjs', '/logo.png', '/icon.svg', '/manifest.webmanifest'];
+const CACHE = 'lelekatalk-shell-v5';
+const ASSETS = ['/', '/styles.css', '/app.js', '/mvp.js', '/crypto.js', '/push.js', '/emoji.js', '/calls.js', '/vendor/openpgp.min.mjs', '/logo.png', '/icon.svg', '/manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
@@ -14,9 +14,10 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push', event => {
   event.waitUntil((async () => {
     let data; try { data=event.data?.json(); } catch { return; }
-    if(data?.type!=='message' || !/^[a-f0-9-]{36}$/.test(data.chatId) || !/^[a-f0-9-]{36}$/.test(data.userId))return;
+    if(!['message','call'].includes(data?.type) || !/^[a-f0-9-]{36}$/.test(data.chatId) || !/^[a-f0-9-]{36}$/.test(data.userId))return;
     try { const response=await fetch('/api/me',{credentials:'same-origin',cache:'no-store'});if(!response.ok || (await response.json()).user.id!==data.userId)return; } catch { return; }
-    await self.registration.showNotification('LelekaTalk',{body:data.language==='en'?'New message. Open the chat to read it.':'Нове повідомлення. Відкрий чат, щоб прочитати.',icon:'/logo.png',badge:'/icon.svg',tag:`chat-${data.chatId}`,data:{chatId:data.chatId},renotify:true});
+    const body=data.type==='call'?(data.language==='en'?'Incoming audio call. Open LelekaTalk to answer.':'Вхідний аудіодзвінок. Відкрий LelekaTalk, щоб відповісти.'):(data.language==='en'?'New message. Open the chat to read it.':'Нове повідомлення. Відкрий чат, щоб прочитати.');
+    await self.registration.showNotification('LelekaTalk',{body,icon:'/logo.png',badge:'/icon.svg',tag:`${data.type}-${data.chatId}`,data:{chatId:data.chatId},renotify:true});
   })());
 });
 self.addEventListener('notificationclick', event => {

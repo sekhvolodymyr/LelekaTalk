@@ -99,6 +99,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     ['/crypto.js', ['crypto.js', 'text/javascript; charset=utf-8']],
     ['/push.js', ['push.js', 'text/javascript; charset=utf-8']],
     ['/emoji.js', ['emoji.js', 'text/javascript; charset=utf-8']],
+    ['/calls.js', ['calls.js', 'text/javascript; charset=utf-8']],
     ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
     ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
     ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
@@ -109,7 +110,8 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'same-origin');
     response.setHeader('X-Frame-Options', 'DENY');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    response.setHeader('Permissions-Policy', 'microphone=(self), camera=()');
     try {
       const host = request.headers.host;
       const cloudOrigin = allowedOrigins.find(origin => new URL(origin).host === host);
@@ -177,6 +179,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
       if (route === '/api/logout' && request.method === 'POST') {
         const token = /(?:^|;\s*)leleka_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie ?? '')?.[1];
         if (token) database.sessions = database.sessions.filter(item => item.tokenHash !== hash(token));
+        for (const call of database.calls ?? []) if (call.status !== 'ended' && [call.callerSession,call.calleeSession].includes(hash(token ?? ''))) { call.status='ended';call.reason='ended';call.endedAt=Date.now();call.offer=null;call.answer=null;call.signals=[]; }
         const removed = (database.pushSubscriptions ?? []).filter(item => item.sessionHash === hash(token ?? ''));
         database.pushSubscriptions = (database.pushSubscriptions ?? []).filter(item => !removed.includes(item));
         database.pushOutbox = (database.pushOutbox ?? []).filter(job => !removed.some(s => s.id === job.subscriptionId));

@@ -19,7 +19,7 @@ export function queueMessagePush(database, chat, message) {
     if (subscription.userId === message.senderId || !message.audience.includes(subscription.userId)) continue;
     if (database.mvp.blocks.some(b => (b.from === message.senderId && b.to === subscription.userId) || (b.to === message.senderId && b.from === subscription.userId))) continue;
     if (!database.sessions.some(s => s.tokenHash === subscription.sessionHash && s.expiresAt > now)) continue;
-    database.pushOutbox.push({ id: randomUUID(), subscriptionId: subscription.id, chatId: chat.id, senderId: message.senderId, attempts: 0, nextAttempt: now, expiresAt: now + 5 * 60_000 });
+    database.pushOutbox.push({ id: randomUUID(), subscriptionId: subscription.id, chatId: chat.id, senderId: message.senderId, type:message.type==='call'?'call':'message', ...(message.callId?{callId:message.callId}:{}), attempts: 0, nextAttempt: now, expiresAt: now + (message.type==='call'?60_000:5*60_000) });
   }
   database.pushOutbox = database.pushOutbox.slice(-1000);
 }
@@ -42,7 +42,8 @@ export function createPushService({ publicKey = process.env.VAPID_PUBLIC_KEY, pr
             const subscription = database.pushSubscriptions?.find(s => s.id === job.subscriptionId);
             const chat = database.mvp.chats.find(c => c.id === job.chatId);
             const allowed = subscription && validSubscription(subscription) && database.sessions.some(s => s.tokenHash === subscription.sessionHash && s.expiresAt > now) && chat?.members.some(m => m.userId === subscription.userId && m.status === 'accepted') && !database.mvp.blocks.some(b => (b.from === job.senderId && b.to === subscription.userId) || (b.to === job.senderId && b.from === subscription.userId));
-            if (!allowed) { job.expiresAt = 0; continue; }
+            const ringing=job.type!=='call'||database.calls?.some(call=>call.id===job.callId&&call.status==='ringing'&&call.expiresAt>now);
+            if (!allowed || !ringing) { job.expiresAt = 0; continue; }
             job.lease = lease; job.leaseUntil = now + 20_000; job.attempts++;
             selected.push({ ...job, subscription: structuredClone(subscription) });
           }
@@ -52,7 +53,7 @@ export function createPushService({ publicKey = process.env.VAPID_PUBLIC_KEY, pr
         if (!jobs.length) break;
         const outcomes = await Promise.all(jobs.map(async job => {
           try {
-            await send({ endpoint: job.subscription.endpoint, keys: job.subscription.keys }, JSON.stringify({ type: 'message', chatId: job.chatId, userId: job.subscription.userId, language: job.subscription.language }), { vapidDetails: { subject, publicKey, privateKey }, TTL: 300, urgency: 'high', timeout: 4000 });
+            await send({ endpoint: job.subscription.endpoint, keys: job.subscription.keys }, JSON.stringify({ type: job.type??'message', chatId: job.chatId, userId: job.subscription.userId, language: job.subscription.language }), { vapidDetails: { subject, publicKey, privateKey }, TTL: Math.max(1,Math.min(300,Math.ceil((job.expiresAt-Date.now())/1000))), urgency: 'high', timeout: 4000 });
             return { id: job.id, done: true };
           } catch (error) { return { id: job.id, done: [404, 410].includes(error.statusCode), expired: [404, 410].includes(error.statusCode), subscriptionId: job.subscription.id }; }
         }));

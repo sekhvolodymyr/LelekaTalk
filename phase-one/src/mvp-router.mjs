@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as openpgp from 'openpgp';
 import { validSubscription, queueMessagePush } from './push-service.mjs';
+import { createCallRouter } from './call-router.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TOPICS = ['creative', 'technology', 'learning', 'life'];
@@ -69,6 +70,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     comments: db.comments.filter(comment => comment.postId === post.id).map(comment => ({ id: comment.id, text: comment.text, authorName: comment.authorName, createdAt: comment.createdAt, isMine: comment.authorId === user.id })),
   });
 
+  const callRouter = createCallRouter({ database, db, getSession, requireChat, blocked, person, userById, encrypted, readBody, persist, fail });
   return async function route(request, response, url) {
     if (!url.pathname.startsWith('/api/mvp/')) return false;
     const user = getUser(request);
@@ -76,6 +78,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     const pathname = url.pathname.slice('/api/mvp'.length);
     const method = request.method;
     const reply = (status, value) => { send(response, status, value); return true; };
+    if (await callRouter(request,url,user,reply)) return true;
 
     if (pathname === '/push' && method === 'GET') {
       const session = getSession(request);

@@ -1,6 +1,7 @@
 import * as encryption from '/crypto.js';
 import { bindEmojiPicker } from '/emoji.js';
 import { notificationButton, refreshNotifications, toggleNotifications, forgetNotifications } from '/push.js';
+import { createAudioCalls } from '/calls.js';
 
 const vocabulary = {
   uk: {
@@ -33,6 +34,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
   const drafts = new Map();
   const decrypted = new Map();
   let epoch = 0, pollTimer, polling = false;
+  const calls = createAudioCalls({ api, getState, encryption, escapeHTML:e, toast });
   const dialog = document.createElement('dialog');
   dialog.id = 'mvp-dialog';
   dialog.setAttribute('aria-labelledby', 'mvp-dialog-title');
@@ -153,7 +155,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     if (!chat) return `<section class="chat-welcome"><div class="greeting">${e(appText('hello'))}, ${e(getState().user.personalName)}</div><span class="logo welcome-logo"><img src="/logo.png" alt="LelekaTalk"></span><h1>${e(appText('homeTitle'))}</h1><p>${e(appText('homeHint'))}</p><div class="welcome-actions">${actionButton('new-chat', 'newChat', '', 'primary')}<button class="button secondary" data-view="communities">${e(appText('discoverAction'))}</button></div></section>`;
     const invited = chat.myStatus === 'invited';
     const disabled = invited || !chat.ready || chat.blocked;
-    return `<section class="conversation"><header class="conversation-header"><div><h1>${e(chatName(chat))}</h1><p>${e(t('encrypted'))}${chat.type === 'group' ? ` · ${chat.members.filter(member => member.status === 'accepted').length}` : ''}</p></div><div class="conversation-tools">${actionButton('safety', 'safety', '', 'secondary')}${chat.type === 'group' && chat.ownerId === getState().user.id ? actionButton('invite', 'invite') : ''}${chat.type === 'group' && chat.ownerId !== getState().user.id && !invited ? actionButton('leave', 'leave') : ''}${chat.type === 'direct' && !invited ? actionButton(chat.blockedByMe ? 'unblock' : 'block', chat.blockedByMe ? 'unblock' : 'block') : ''}${actionButton('report', 'report')}</div></header>
+    return `<section class="conversation"><header class="conversation-header"><div><h1>${e(chatName(chat))}</h1><p>${e(t('encrypted'))}${chat.type === 'group' ? ` · ${chat.members.filter(member => member.status === 'accepted').length}` : ''}</p></div><div class="conversation-tools">${calls.button(chat)}${actionButton('safety', 'safety', '', 'secondary')}${chat.type === 'group' && chat.ownerId === getState().user.id ? actionButton('invite', 'invite') : ''}${chat.type === 'group' && chat.ownerId !== getState().user.id && !invited ? actionButton('leave', 'leave') : ''}${chat.type === 'direct' && !invited ? actionButton(chat.blockedByMe ? 'unblock' : 'block', chat.blockedByMe ? 'unblock' : 'block') : ''}${actionButton('report', 'report')}</div></header>
       ${invited ? `<div class="invitation-panel"><p>${e(t('invited'))}</p>${actionButton('accept', 'accept', '', 'primary')}${actionButton('reject', 'reject')}</div>` : ''}
       ${!invited && !chat.ready ? `<p class="status-note">${e(t('waiting'))}</p>` : ''}${chat.blocked ? `<p class="status-note">${e(t('blocked'))}</p>` : ''}
       ${s.hasMore ? actionButton('older', 'older', '', 'secondary') : ''}<div id="mvp-messages" class="messages" role="log" aria-live="polite">${messagesHTML()}</div>
@@ -262,6 +264,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     });
   });
   function bind() {
+    document.querySelectorAll('[data-audio-call]').forEach(button=>button.addEventListener('click',()=>{const chat=s.chats.find(c=>c.id===button.dataset.audioCall);if(chat)void calls.dial(chat);}));
     const form = document.querySelector('#mvp-message-form');
     if (form) {
       const field = form.querySelector('textarea');
@@ -331,9 +334,10 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
         }
         redraw();
         pollTimer = setInterval(poll, 2000);
+        calls.start(user);
       } catch (error) { if (generation === epoch) { s.cryptoStatus = 'locked'; redraw(); toast(errorText(error)); } }
     },
-    async stop(userId) { ++epoch; clearInterval(pollTimer); s.recoveryCode = null; drafts.clear(); decrypted.clear(); dialog.close(); await forgetNotifications().catch(() => {}); await encryption.closeSession(userId).catch(() => {}); },
+    async stop(userId) { ++epoch; clearInterval(pollTimer); await calls.stop(); s.recoveryCode = null; drafts.clear(); decrypted.clear(); dialog.close(); await forgetNotifications().catch(() => {}); await encryption.closeSession(userId).catch(() => {}); },
     errorText,
   };
 }
