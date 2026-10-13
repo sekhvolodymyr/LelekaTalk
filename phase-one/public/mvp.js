@@ -1,4 +1,6 @@
 import * as encryption from '/crypto.js';
+import { bindEmojiPicker } from '/emoji.js';
+import { notificationButton, refreshNotifications, toggleNotifications, forgetNotifications } from '/push.js';
 
 const vocabulary = {
   uk: {
@@ -209,7 +211,8 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     if (action === 'close') { dialog.close(); return; }
     run(async () => {
       const id = button.dataset.id;
-      if (action === 'new-chat' || action === 'invite') {
+      if (action === 'notifications') { try { await toggleNotifications(api, getState().language); } finally { redraw(); } }
+      else if (action === 'new-chat' || action === 'invite') {
         s.users = []; s.selectedUsers = []; s.searchQuery = ''; s.groupTitle = ''; s.newMode = 'direct'; s.inviteChat = action === 'invite' ? s.selectedChat : null; newChatDialog();
       } else if (action === 'new-mode') { s.newMode = button.dataset.mode; newChatDialog(); }
       else if (action === 'select-user') {
@@ -259,6 +262,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     const form = document.querySelector('#mvp-message-form');
     if (form) {
       const field = form.querySelector('textarea');
+      bindEmojiPicker(form, getState().language);
       field.value = drafts.get(s.selectedChat) ?? '';
       field.addEventListener('input', () => { drafts.set(s.selectedChat, field.value); });
       field.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } });
@@ -297,6 +301,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     syncBusyControls();
   }
   return {
+    notificationNotice: () => `<div class="notification-settings">${notificationButton(getState().language)}</div>`,
     syncBusyControls,
     refresh: () => run(refreshAndRender),
     sidebar: () => `<div id="mvp-chat-list" class="chat-list">${sidebarHTML()}</div>`,
@@ -314,10 +319,18 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
         if (generation !== epoch) return;
         s.cryptoStatus = result.locked ? 'locked' : 'ready'; s.recoveryCode = result.recoveryCode ?? null;
         await refreshData(); redraw();
+        await refreshNotifications(api);
+        if (generation !== epoch) return;
+        const target = new URL(location.href).searchParams.get('chat');
+        if (target && s.chats.some(chat => chat.id === target && chat.myStatus === 'accepted')) {
+          s.selectedChat = target; getState().view = 'chats'; await readMessages();
+          const url = new URL(location.href); url.searchParams.delete('chat'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+        }
+        redraw();
         pollTimer = setInterval(poll, 2000);
       } catch (error) { if (generation === epoch) { s.cryptoStatus = 'locked'; redraw(); toast(errorText(error)); } }
     },
-    async stop(userId) { ++epoch; clearInterval(pollTimer); s.recoveryCode = null; drafts.clear(); decrypted.clear(); dialog.close(); await encryption.closeSession(userId).catch(() => {}); },
+    async stop(userId) { ++epoch; clearInterval(pollTimer); s.recoveryCode = null; drafts.clear(); decrypted.clear(); dialog.close(); await forgetNotifications().catch(() => {}); await encryption.closeSession(userId).catch(() => {}); },
     errorText,
   };
 }

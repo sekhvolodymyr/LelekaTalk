@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import * as openpgp from 'openpgp';
+import { validSubscription, queueMessagePush } from './push-service.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TOPICS = ['creative', 'technology', 'learning', 'life'];
 
-export function createMvpRouter({ database, persist, getUser, readBody, send, fail }) {
+export function createMvpRouter({ database, persist, getUser, getSession, readBody, send, fail, pushService }) {
   const db = database.mvp ??= { version: 1, chats: [], messages: [], blocks: [], channels: [], posts: [], comments: [], plans: [], habits: [], reports: [] };
   if (db.version !== 1) throw new Error('Unsupported MVP database version.');
   persist();
@@ -75,6 +76,31 @@ export function createMvpRouter({ database, persist, getUser, readBody, send, fa
     const pathname = url.pathname.slice('/api/mvp'.length);
     const method = request.method;
     const reply = (status, value) => { send(response, status, value); return true; };
+
+    if (pathname === '/push' && method === 'GET') {
+      const session = getSession(request);
+      return reply(200, { publicKey: pushService?.publicKey ?? null, endpoints: (database.pushSubscriptions ?? []).filter(s => s.userId === user.id && s.sessionHash === session.tokenHash).map(s => s.endpoint) });
+    }
+    if (pathname === '/push' && ['POST', 'DELETE'].includes(method)) {
+      const body = await readBody(request);
+      database.pushSubscriptions ??= [];
+      const session = getSession(request);
+      if (method === 'DELETE') {
+        const removed = database.pushSubscriptions.filter(s => s.userId === user.id && s.sessionHash === session.tokenHash && s.endpoint === body.endpoint);
+        database.pushSubscriptions = database.pushSubscriptions.filter(s => !removed.includes(s));
+        database.pushOutbox = (database.pushOutbox ?? []).filter(job => !removed.some(s => s.id === job.subscriptionId));
+        persist(); return reply(200, { ok: true });
+      }
+      if (!pushService) throw fail(503, 'push_not_configured');
+      if (!validSubscription(body.subscription)) throw fail(400, 'invalid_push_subscription');
+      database.pushSubscriptions = database.pushSubscriptions.filter(s => database.sessions.some(session => session.tokenHash === s.sessionHash && session.expiresAt > Date.now()));
+      const previous = database.pushSubscriptions.find(s => s.endpoint === body.subscription.endpoint);
+      if (previous && previous.userId !== user.id) throw fail(409, 'push_subscription_in_use');
+      if (!previous && database.pushSubscriptions.filter(s => s.userId === user.id).length >= 5) throw fail(400, 'push_device_limit');
+      database.pushSubscriptions = database.pushSubscriptions.filter(s => s.endpoint !== body.subscription.endpoint);
+      database.pushSubscriptions.push({ id: previous?.id ?? randomUUID(), userId: user.id, sessionHash: session.tokenHash, endpoint: body.subscription.endpoint, keys: { p256dh: body.subscription.keys.p256dh, auth: body.subscription.keys.auth }, language: body.language === 'en' ? 'en' : 'uk' });
+      persist(); return reply(201, { ok: true });
+    }
 
     if (pathname === '/crypto' && method === 'GET') return reply(200, { vault: user.crypto ?? null, serverTime: Date.now() });
     if (pathname === '/crypto' && method === 'POST') {
@@ -189,6 +215,7 @@ export function createMvpRouter({ database, persist, getUser, readBody, send, fa
         const now = new Date().toISOString();
         const message = { id: messageId, seq: (db.messages.at(-1)?.seq ?? 0) + 1, chatId: chat.id, senderId: user.id, ciphertext, audience: chat.members.filter(member => member.status === 'accepted').map(member => member.userId), createdAt: now };
         db.messages.push(message);
+        queueMessagePush(database, chat, message);
         chat.updatedAt = now;
         persist();
         return reply(201, { message });

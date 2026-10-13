@@ -194,7 +194,7 @@ function renderShell() {
     </aside>
     <div class="mobile-scrim" data-action="close-menu"></div>
     <main class="workspace"><header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" data-action="menu" aria-label="${text('menu')}">${icon('menu')}</button><span>${text(state.view)}</span></div><div class="topbar-actions"><span class="version-pill">MVP 0.2</span>${installPrompt ? `<button class="button small secondary" data-action="install">${text('install')}</button>` : ''}<button class="profile-pill" data-action="switch-profile">${text(state.user.activeProfile)}${icon('chevron')}</button><button class="icon-button" data-action="settings" aria-label="${text('settings')}">${icon('settings')}</button></div></header>
-      ${mvp.notice()}<div class="view-content ${mvp.open() ? 'conversation-content' : ''}">${renderView()}</div>
+      ${mvp.notice()}${mvp.notificationNotice()}<div class="view-content ${mvp.open() ? 'conversation-content' : ''}">${renderView()}</div>
       <nav class="mobile-bottom" aria-label="LelekaTalk">${navItems(navigation)}</nav>
     </main></div>`;
   bindLogoErrors();

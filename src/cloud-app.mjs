@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { createApp } from '../phase-one/server.mjs';
 import { emptyDatabase } from './postgres-store.mjs';
+import { createPushService } from '../phase-one/src/push-service.mjs';
 
 function captureResponse() {
   const headers = {};
@@ -32,12 +33,13 @@ async function bufferedRequest(request) {
   }
   return Object.assign(Readable.from([Buffer.concat(chunks)]), { method: request.method, url: request.url, headers: request.headers, socket: request.socket });
 }
-export function createCloudApp({ store, allowedOrigins, secureCookies = true, trustedProxy = false } = {}) {
+export function createCloudApp({ store, allowedOrigins, secureCookies = true, trustedProxy = false, pushService = createPushService() } = {}) {
   const options = { allowedOrigins, secureCookies, clientAddress: request => createHash('sha256').update(String(trustedProxy ? request.headers['x-vercel-forwarded-for'] ?? request.headers['x-forwarded-for'] ?? request.socket.remoteAddress : request.socket.remoteAddress)).digest('hex') };
   async function handle(request, database) {
     const output = captureResponse();
-    const app = createApp({ ...options, managedDatabase: database, rateLimits: rates(database) });
+    const app = createApp({ ...options, managedDatabase: database, rateLimits: rates(database), pushService });
     await app.listeners('request')[0](request, output);
+    output.pendingPush = Boolean(database.pushOutbox?.length);
     return output;
   }
   return http.createServer(async (request, response) => {
@@ -54,6 +56,9 @@ export function createCloudApp({ store, allowedOrigins, secureCookies = true, tr
         : await handle(input, emptyDatabase());
       // Responses, including session cookies, are released only after COMMIT.
       response.writeHead(result.statusCode, result.headers); response.end(result.body);
+      // The Function awaits delivery after ending the response, keeping network
+      // work outside the database lock and preventing pre-COMMIT notifications.
+      if (isApi && result.pendingPush && pushService) await pushService.drain(store).catch(() => console.error('Push delivery deferred.'));
     } catch (error) {
       response.writeHead(error.status ?? 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       response.end(JSON.stringify({ error: error.code ?? 'storage_unavailable' }));

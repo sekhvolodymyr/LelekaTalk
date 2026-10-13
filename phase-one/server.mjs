@@ -4,6 +4,7 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from '
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createMvpRouter } from './src/mvp-router.mjs';
+import { createPushService } from './src/push-service.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(directory, 'public');
@@ -11,7 +12,7 @@ const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const BODY_LIMIT = 128 * 1024;
 const hash = value => createHash('sha256').update(value).digest('hex');
 
-export function createApp({ dataDirectory = path.join(directory, 'data'), logoPath = process.env.LELEKA_LOGO ?? 'C:/Users/volod/Desktop/LelekaTalk/Leleka Talk logo.png', managedDatabase, onPersist, allowedOrigins = [], secureCookies = false, rateLimits = new Map(), clientAddress } = {}) {
+export function createApp({ dataDirectory = path.join(directory, 'data'), logoPath = process.env.LELEKA_LOGO ?? 'C:/Users/volod/Desktop/LelekaTalk/Leleka Talk logo.png', managedDatabase, onPersist, allowedOrigins = [], secureCookies = false, rateLimits = new Map(), clientAddress, pushService = createPushService() } = {}) {
   if (!managedDatabase) mkdirSync(dataDirectory, { recursive: true });
   const databasePath = path.join(dataDirectory, 'accounts.json');
   const database = managedDatabase ?? (existsSync(databasePath)
@@ -44,10 +45,13 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
   function fail(status, code) {
     return Object.assign(new Error(code), { status, code });
   }
-  function getUser(request) {
+  function getSession(request) {
     const token = /(?:^|;\s*)leleka_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie ?? '')?.[1];
     if (!token) return null;
-    const session = database.sessions.find(item => item.tokenHash === hash(token) && item.expiresAt > Date.now());
+    return database.sessions.find(item => item.tokenHash === hash(token) && item.expiresAt > Date.now()) ?? null;
+  }
+  function getUser(request) {
+    const session = getSession(request);
     return session ? database.users.find(item => item.id === session.userId) ?? null : null;
   }
   function issueSession(user) {
@@ -86,13 +90,15 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
   function normalizeEmail(value) {
     return typeof value === 'string' ? value.trim().toLowerCase() : '';
   }
-  const mvpRouter = createMvpRouter({ database, persist, getUser, readBody, send, fail });
+  const mvpRouter = createMvpRouter({ database, persist, getUser, getSession, readBody, send, fail, pushService });
   const staticFiles = new Map([
     ['/', ['index.html', 'text/html; charset=utf-8']],
     ['/index.html', ['index.html', 'text/html; charset=utf-8']],
     ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
     ['/mvp.js', ['mvp.js', 'text/javascript; charset=utf-8']],
     ['/crypto.js', ['crypto.js', 'text/javascript; charset=utf-8']],
+    ['/push.js', ['push.js', 'text/javascript; charset=utf-8']],
+    ['/emoji.js', ['emoji.js', 'text/javascript; charset=utf-8']],
     ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
     ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
     ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
@@ -171,6 +177,9 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
       if (route === '/api/logout' && request.method === 'POST') {
         const token = /(?:^|;\s*)leleka_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie ?? '')?.[1];
         if (token) database.sessions = database.sessions.filter(item => item.tokenHash !== hash(token));
+        const removed = (database.pushSubscriptions ?? []).filter(item => item.sessionHash === hash(token ?? ''));
+        database.pushSubscriptions = (database.pushSubscriptions ?? []).filter(item => !removed.includes(item));
+        database.pushOutbox = (database.pushOutbox ?? []).filter(job => !removed.some(s => s.id === job.subscriptionId));
         persist();
         return send(response, 200, { ok: true }, { 'Set-Cookie': `leleka_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies ? '; Secure' : ''}` });
       }
@@ -199,6 +208,10 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
       if (response.headersSent) return response.end();
       if (!error.status) console.error('Request failed:', error.message);
       send(response, error.status ?? 500, { error: error.code ?? 'server_error' });
+    } finally {
+      if (!managedDatabase && database.pushOutbox?.length && pushService) {
+        await pushService.drain({ run: async (mutating, action) => { const result = await action(database); if (mutating) persist(); return result; } }).catch(() => console.error('Push delivery deferred.'));
+      }
     }
   });
 }
