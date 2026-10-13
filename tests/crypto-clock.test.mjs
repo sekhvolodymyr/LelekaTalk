@@ -39,9 +39,10 @@ test('a long-open receiver can decrypt a new peer message without reloading and 
   const receiver = await actor('receiver', Date.now() - 6 * 60 * 60_000);
   const sender = await actor('sender', Date.now());
   const outsider = await actor('outsider', Date.now());
-  const reply = { kind: 'message', id: randomUUID(), chatId: randomUUID(), senderId: receiver.user.id, text: 'Send safely after the same long pause' };
-  const replyCiphertext = await receiver.module.encryptEnvelope(reply, [sender.identity]);
-  assert.deepEqual(await sender.module.decryptEnvelope(replyCiphertext, receiver.identity, { kind: reply.kind, id: reply.id, chatId: reply.chatId, senderId: reply.senderId }), reply);
+  const pausedSender = await actor('paused_sender', Date.now() - 6 * 60 * 60_000);
+  const reply = { kind: 'message', id: randomUUID(), chatId: randomUUID(), senderId: pausedSender.user.id, text: 'Send safely after the same long pause' };
+  const replyCiphertext = await pausedSender.module.encryptEnvelope(reply, [sender.identity]);
+  assert.deepEqual(await sender.module.decryptEnvelope(replyCiphertext, pausedSender.identity, { kind: reply.kind, id: reply.id, chatId: reply.chatId, senderId: reply.senderId }), reply);
   const payload = { kind: 'message', id: randomUUID(), chatId: randomUUID(), senderId: sender.user.id, text: 'A new message after a long background pause' };
   const encrypted = await sender.module.encryptEnvelope(payload, [receiver.identity]);
   const expected = { kind: payload.kind, id: payload.id, chatId: payload.chatId, senderId: payload.senderId };
