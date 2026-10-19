@@ -1,7 +1,7 @@
 * { box-sizing: border-box; }
 textarea { font: inherit; width: 100%; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--surface); color: var(--text); resize: vertical; }
 textarea:focus-visible { outline: 3px solid #a87700; outline-offset: 3px; }
-.chat-list { margin-top: 14px; max-height: 35vh; overflow-y: auto; }
+.chat-list { margin-top: 14px; max-height: 35vh; overflow-y: auto; flex-shrink: 0; }
 .chat-item { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; text-align: left; padding: 11px 8px; border-radius: 10px; }
 .chat-item:hover, .chat-item.selected { background: var(--hover); }
 .chat-item>span:nth-child(2) { min-width: 0; display: grid; gap: 4px; }
@@ -405,7 +405,7 @@ body[data-theme='midnight'] .build-note { background:#283d52; color:#d0e1f5; }
 #google-event-form .checkbox { display:flex; gap:10px; align-items:center; }
 #google-event-form .field-note { margin-bottom:16px; }
 @media(max-width:700px) { .google-calendar-card { padding:18px 14px; } .google-calendar-card h2 { font-size:17px; } .google-calendar-card>header { gap:12px; } .google-calendar-card>header .button { font-size:11px; } .google-event { align-items:flex-start; } .google-event>div:last-child { flex-direction:column; } .space-calendar-navigation .button { flex:1; padding:8px 10px; font-size:11px; } }
-.sidebar-footer { margin-top:auto; }
+.sidebar-footer { margin-top:auto; flex-shrink:0; }
 .support-card { border:1px solid var(--border); background:var(--panel); border-radius:16px; padding:17px; }
 .support-card>strong { display:block; color:var(--text); font-size:14px; line-height:1.5; }
 .support-card>p { margin:7px 0 14px; color:var(--muted); font-size:12px; line-height:1.6; }
