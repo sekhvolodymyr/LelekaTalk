@@ -50,7 +50,7 @@ export function createCallRouter({ database, db, getSession, requireChat, blocke
       if(database.calls.some(c=>live(c)&&[c.callerId,c.calleeId].some(id=>id===user.id||id===callee.userId)))throw fail(409,'call_busy');
       const now=Date.now(),call={id:body.id,media,chatId:chat.id,callerId:user.id,calleeId:callee.userId,callerSession:session.tokenHash,callerDevice:deviceId,status:'ringing',createdAt:now,expiresAt:now+60_000,callerSeenAt:now,calleeSeenAt:now,offer,answer:null,signals:[]};
       database.calls.push(call);
-      queueMessagePush(database,chat,{senderId:user.id,audience:[callee.userId],type:'call',callId:call.id});
+      queueMessagePush(database,chat,{senderId:user.id,audience:[callee.userId],type:'call',callId:call.id,media});
       persist();return reply(201,{call:dto(call)});
     }
     const match=/^\/calls\/([a-f0-9-]{36})\/(answer|signals|heartbeat|end)$/.exec(path);

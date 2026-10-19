@@ -28,7 +28,7 @@ async function fixture(t, failMessages = false) {
   database.sessions = actors.map(a=>({userId:a.id,tokenHash:createHash('sha256').update(a.token).digest('hex'),expiresAt:Date.now()+60_000}));
   const chat = {id:randomUUID(),type:'direct',ownerId:actors[0].id,revision:1,members:actors.slice(0,2).map(a=>({userId:a.id,status:'accepted'}))};database.mvp.chats.push(chat);
   const store = memoryStore(database,failMessages), delivered=[];
-  const pushService=createPushService({...vapid,send:async (target,payload)=>{assert.equal(store.snapshot().mvp.messages.length,1,'push requires durable message');delivered.push({target,payload:JSON.parse(payload)});}});
+  const pushService=createPushService({...vapid,send:async (target,payload)=>{const data=JSON.parse(payload);if(data.type==='call')assert.ok(store.snapshot().calls?.some(c=>c.status==='ringing'&&c.media===data.media),'call push requires durable ringing call');else assert.equal(store.snapshot().mvp.messages.length,1,'push requires durable message');delivered.push({target,payload:data});}});
   const app=createCloudApp({store,allowedOrigins:['https://lelekatalk.example'],pushService});app.listen(0,'127.0.0.1');await once(app,'listening');
   t.after(async()=>{app.close();app.closeAllConnections();await once(app,'close');});
   async function call(actor,path,method='GET',body) {const encoded=body?JSON.stringify(body):undefined;return new Promise((resolve,reject)=>{const req=http.request(`http://127.0.0.1:${app.address().port}/api/${path}`,{method,headers:{Host:'lelekatalk.example',Origin:'https://lelekatalk.example',...(actor?{Cookie:`leleka_session=${actor.token}`} : {}),...(encoded?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(encoded)}:{})}},res=>{const parts=[];res.on('data',x=>parts.push(x));res.on('end',()=>resolve({status:res.statusCode,data:JSON.parse(Buffer.concat(parts).toString())}));});req.on('error',reject);req.end(encoded);});}
@@ -63,6 +63,19 @@ test('a failed message commit cannot emit a push',async t=>{
   assert.equal((await f.call(alice,`mvp/chats/${f.chat.id}/messages`,'POST',{id:randomUUID(),ciphertext,revision:1})).status,503);
   assert.equal(f.delivered.length,0);assert.equal(f.store.snapshot().mvp.messages.length,0);
 });
+
+test('video and audio calls notify only the recipient after commit with the correct media mode',async t=>{
+  const f=await fixture(t),[alice,bob]=f.actors;
+  for(const actor of f.actors)await f.call(actor,'mvp/push','POST',{subscription:subscription(actor.username)});
+  for(const media of ['video','audio']){
+    const id=randomUUID(),deviceId=randomUUID();
+    const result=await f.call(alice,'mvp/calls','POST',{id,deviceId,chatId:f.chat.id,media,offer:ciphertext});assert.equal(result.status,201);
+    await waitFor(()=>f.delivered.length===(media==='video'?1:2));
+    const notification=f.delivered.at(-1);assert.deepEqual(notification.payload,{type:'call',media,chatId:f.chat.id,userId:bob.id,language:'uk'});
+    assert.ok(!JSON.stringify(notification).includes(ciphertext));
+    await f.call(alice,`mvp/calls/${id}/end`,'POST',{deviceId});
+  }
+});
 test('outbox leases avoid duplicate sends, expired subscriptions are removed, transient failures wait for retry',async()=>{
   for(const statusCode of [201,410,503]){
     const d=emptyDatabase(),senderId=randomUUID(),userId=randomUUID(),sessionHash='fixture',chat={id:randomUUID(),members:[{userId,status:'accepted'}]};d.mvp.chats.push(chat);d.sessions.push({tokenHash:sessionHash,expiresAt:Date.now()+60_000});d.pushSubscriptions=[{...subscription(),id:randomUUID(),userId,sessionHash}];
@@ -75,11 +88,18 @@ test('outbox leases avoid duplicate sends, expired subscriptions are removed, tr
   for(const endpoint of ['https://localhost/a','http://fcm.googleapis.com/a','https://fcm.googleapis.com.evil.test/a','https://fcm.googleapis.com:444/a'])assert.equal(validSubscription({...subscription(),endpoint}),false);
 });
 test('service worker shows generic notifications only for the current account and opens a safe chat link',async()=>{
-  const listeners={},shown=[],navigated=[],userId=randomUUID(),chatId=randomUUID();let currentUser=userId;
-  const self={location:{origin:'https://lelekatalk.example'},addEventListener:(name,fn)=>listeners[name]=fn,registration:{showNotification:async(...args)=>shown.push(args)},clients:{matchAll:async()=>[{url:'https://lelekatalk.example/',navigate:async url=>navigated.push(url),focus:async()=>{}}]}};
+  const listeners={},shown=[],navigated=[],opened=[],userId=randomUUID(),chatId=randomUUID();let currentUser=userId,focused=0,windows=true;
+  const self={location:{origin:'https://lelekatalk.example'},addEventListener:(name,fn)=>listeners[name]=fn,registration:{showNotification:async(...args)=>shown.push(args)},clients:{matchAll:async()=>windows?[{url:'https://lelekatalk.example/',navigate:async url=>navigated.push(url),focus:async()=>{focused++;}}]:[],openWindow:async url=>opened.push(url)}};
   vm.runInNewContext(readFileSync(new URL('../phase-one/public/sw.js',import.meta.url),'utf8'),{self,URL,fetch:async()=>({ok:true,json:async()=>({user:{id:currentUser}})})});
   async function push(data){let work;listeners.push({data:{json:()=>data},waitUntil:promise=>work=promise});await work;}
   await push({type:'message',chatId,userId,language:'uk',text:'never display this'});assert.equal(shown.length,1);assert.ok(!JSON.stringify(shown).includes('never display this'));
   currentUser=randomUUID();await push({type:'message',chatId,userId});assert.equal(shown.length,1);
   let work;listeners.notificationclick({notification:{close(){},data:{chatId}},waitUntil:promise=>work=promise});await work;assert.equal(navigated[0],`https://lelekatalk.example/?chat=${chatId}`);
+  currentUser=userId;
+  for(const [media,language,title] of [['video','uk','Вхідний відеодзвінок'],['video','en','Incoming video call'],['audio','uk','Вхідний аудіодзвінок']]){
+    await push({type:'call',media,language,chatId,userId});assert.equal(shown.at(-1)[0],title);assert.equal(shown.at(-1)[1].data.type,'call');
+  }
+  listeners.notificationclick({notification:{close(){},data:{chatId,type:'call'}},waitUntil:promise=>work=promise});await work;
+  assert.equal(navigated.length,1,'call click focuses without pagehide/navigation');assert.equal(focused,2);
+  windows=false;listeners.notificationclick({notification:{close(){},data:{chatId,type:'call'}},waitUntil:promise=>work=promise});await work;assert.equal(opened[0],`https://lelekatalk.example/?chat=${chatId}`);
 });
