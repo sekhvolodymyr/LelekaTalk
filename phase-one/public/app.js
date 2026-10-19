@@ -63,6 +63,14 @@ const words = {
     errors: { invalid_email: 'Check your email.', invalid_username: 'Username: 3–24 lowercase Latin letters, digits or _.', invalid_name: 'Name must be 1–60 characters.', invalid_password: 'Password must be 12–256 characters.', age_confirmation_required: 'Confirm that you are at least 16.', account_conflict: 'Email or username is already in use.', invalid_credentials: 'Incorrect email or password.', too_many_attempts: 'Too many attempts. Wait one minute.', authentication_required: 'Please log in again.', invalid_profile: 'Check your profile settings.', server_error: 'Server error. Please try again.' },
   },
 };
+const themes = [
+  ['light','Світла','Light'],['dark','Темна','Dark'],
+  ['ocean','Океан','Ocean'],['forest','Ліс','Forest'],['rose','Троянда','Rose'],['lavender','Лаванда','Lavender'],
+  ['sunrise','Світанок','Sunrise'],['aurora','Сяйво','Aurora'],['sky','Небо','Sky'],['midnight','Опівніч','Midnight'],
+];
+const themeName = theme => theme[state.language==='uk'?1:2];
+const validTheme = value => themes.some(theme=>theme[0]===value);
+let previewTheme=null;
 const icons = {
   chat: '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',
   feed: '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h4"/>',
@@ -85,7 +93,7 @@ function readPreference(key, fallback) { try { return localStorage.getItem(`lele
 function writePreference(key, value) { try { localStorage.setItem(`leleka:${key}`, value); } catch { /* Preferences are optional. */ } }
 const state = {
   language: readPreference('language', 'uk') === 'en' ? 'en' : 'uk',
-  theme: readPreference('theme', 'light') === 'dark' ? 'dark' : 'light',
+  theme: validTheme(readPreference('theme','light')) ? readPreference('theme','light') : 'light',
   view: ['chats', 'wall', 'feed', 'communities'].includes(readPreference('tab', 'chats')) ? readPreference('tab', 'chats') : 'chats',
   feed: 'forYou', user: null, authMode: 'login', busy: false,
 };
@@ -98,7 +106,7 @@ const wall = createWall({api,getState:()=>state,escapeHTML,toast,renderShell});
 const mvp = createMvp({ api, getState: () => state, escapeHTML, icon, text, toast, renderShell });
 function applyPreferences() {
   document.documentElement.lang = state.language;
-  document.body.dataset.theme = state.theme;
+  document.body.dataset.theme = previewTheme ?? state.theme;
 }
 function toast(message) {
   const element = document.querySelector('#toast');
@@ -218,11 +226,21 @@ function renderView() {
   return `<section class="section-empty assistant-empty"><span class="empty-icon">${icon('sparkle')}</span><h1>${text('assistantTitle')}</h1><p>${text('assistantHint')}</p><span class="status-note">${text('assistantStatus')}</span></section>`;
 }
 function render() { state.user ? renderShell() : renderAuth(); }
+dialog.addEventListener('close',()=>{previewTheme=null;applyPreferences();});
 function openSettings() {
-  dialog.innerHTML = `<div class="dialog-heading"><h2 id="settings-title">${text('settings')}</h2><button class="icon-button" data-action="close-settings" aria-label="${text('close')}">${icon('close')}</button></div><form id="settings-form"><div class="profile-detail"><span class="avatar">${initials()}</span><span><strong>${escapeHTML(displayName())}</strong><small>@${escapeHTML(state.user.username)}</small></span></div><label>${text('personalName')}<input name="personalName" value="${escapeHTML(state.user.personalName)}" required maxlength="60"></label><label>${text('creatorName')}<input name="creatorName" value="${escapeHTML(state.user.creatorName)}" required maxlength="60"></label><label class="checkbox"><input type="checkbox" name="showProfileLink" ${state.user.showProfileLink ? 'checked' : ''}><span>${text('showLink')}</span></label><p class="field-note">${text('profileLinkHint')}</p><div class="settings-row"><label>${text('language')}<select name="language"><option value="uk" ${state.language === 'uk' ? 'selected' : ''}>Українська</option><option value="en" ${state.language === 'en' ? 'selected' : ''}>English</option></select></label><label>${text('theme')}<select name="theme"><option value="light" ${state.theme === 'light' ? 'selected' : ''}>${text('light')}</option><option value="dark" ${state.theme === 'dark' ? 'selected' : ''}>${text('dark')}</option></select></label></div><p id="settings-error" class="form-error" role="alert" hidden></p><button class="button primary" type="submit">${text('save')}</button><button class="button logout-button" type="button" data-action="logout">${text('logout')}</button></form>`;
+  previewTheme=state.theme;
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="settings-title">${text('settings')}</h2><button class="icon-button" data-action="close-settings" aria-label="${text('close')}">${icon('close')}</button></div><form id="settings-form"><div class="profile-detail"><span class="avatar">${initials()}</span><span><strong>${escapeHTML(displayName())}</strong><small>@${escapeHTML(state.user.username)}</small></span></div><label>${text('personalName')}<input name="personalName" value="${escapeHTML(state.user.personalName)}" required maxlength="60"></label><label>${text('creatorName')}<input name="creatorName" value="${escapeHTML(state.user.creatorName)}" required maxlength="60"></label><label class="checkbox"><input type="checkbox" name="showProfileLink" ${state.user.showProfileLink ? 'checked' : ''}><span>${text('showLink')}</span></label><p class="field-note">${text('profileLinkHint')}</p><div class="settings-row"><label>${text('language')}<select name="language"><option value="uk" ${state.language === 'uk' ? 'selected' : ''}>Українська</option><option value="en" ${state.language === 'en' ? 'selected' : ''}>English</option></select></label><label>${text('theme')}<select name="theme">${themes.map(theme=>`<option value="${theme[0]}" ${state.theme===theme[0]?'selected':''}>${themeName(theme)}</option>`).join('')}</select></label></div><fieldset class="theme-picker"><legend>${text('theme')}</legend><p class="theme-hint">${state.language==='uk'?'Обери колір або градієнт. Перегляд одразу, збереження — кнопкою нижче.':'Pick a color or gradient. Preview instantly, then save below.'}</p><div class="theme-grid">${themes.map(theme=>`<button type="button" class="theme-swatch" data-theme-choice="${theme[0]}" aria-pressed="${state.theme===theme[0]}"><span class="theme-swatch-color" aria-hidden="true"><span></span><span></span></span><span>${themeName(theme)}</span></button>`).join('')}</div></fieldset><p id="settings-error" class="form-error" role="alert" hidden></p><button class="button primary" type="submit">${text('save')}</button><button class="button logout-button" type="button" data-action="logout">${text('logout')}</button></form>`;
   for (const field of ['language', 'theme']) {
     dialog.querySelector(`[name="${field}"]`).setAttribute('aria-label', text(field));
   }
+  function preview(value){
+    if(!validTheme(value))return;
+    previewTheme=value;dialog.querySelector('[name="theme"]').value=value;
+    for(const swatch of dialog.querySelectorAll('[data-theme-choice]'))swatch.setAttribute('aria-pressed',String(swatch.dataset.themeChoice===value));
+    applyPreferences();
+  }
+  dialog.querySelector('[name="theme"]').addEventListener('change',event=>preview(event.target.value));
+  dialog.querySelectorAll('[data-theme-choice]').forEach(button=>button.addEventListener('click',()=>preview(button.dataset.themeChoice)));
   dialog.showModal();
   dialog.querySelector('#settings-form').addEventListener('submit', async event => {
     event.preventDefault();
@@ -238,7 +256,7 @@ function openSettings() {
       const result = await api('profile', { method: 'PATCH', body: { personalName: fields.get('personalName'), creatorName: fields.get('creatorName'), showProfileLink: fields.get('showProfileLink') === 'on' } });
       state.user = result.user;
       state.language = fields.get('language');
-      state.theme = fields.get('theme');
+      state.theme = validTheme(fields.get('theme')) ? fields.get('theme') : 'light';
       writePreference('language', state.language);
       writePreference('theme', state.theme);
       dialog.close();
