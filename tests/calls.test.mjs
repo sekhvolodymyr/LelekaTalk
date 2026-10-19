@@ -6,6 +6,7 @@ import {once} from 'node:events';
 import http from 'node:http';
 import {createCloudApp} from '../src/cloud-app.mjs';
 import {emptyDatabase} from '../src/postgres-store.mjs';
+import {validateCallDescription} from '../phase-one/public/call-description.js';
 const require=createRequire(new URL('../phase-one/package.json',import.meta.url)),pgp=require('openpgp');
 const pair=await pgp.generateKey({type:'ecc',curve:'curve25519',userIDs:[{name:'Calls fixture'}]});
 const ciphertext=await pgp.encrypt({message:await pgp.createMessage({text:'v=0\r\nprivate SDP and network candidates'}),encryptionKeys:await pgp.readKey({armoredKey:pair.publicKey})});
@@ -61,4 +62,28 @@ test('ringing times out and one active participant cannot keep an abandoned call
   await f.store.run(true,d=>{d.calls.find(c=>c.id===id).callerSeenAt=Date.now()-61_000;});
   assert.equal((await f.list(bob)).data.calls.find(c=>c.id===id).status,'ended');
   assert.equal((await f.call(bob,`mvp/calls/${id}/heartbeat`,'POST',{})).status,409);
+});
+
+test('video call mode is validated, persisted and immutable; legacy calls default to audio',async t=>{
+  const f=await fixture(t),[alice,bob]=f.actors,id=randomUUID(),body={id,chatId:f.chats[0].id,offer:ciphertext};
+  assert.equal((await f.call(alice,'mvp/calls','POST',{...body,media:'screen'})).status,400);
+  const created=await f.call(alice,'mvp/calls','POST',{...body,media:'video'});assert.equal(created.status,201);assert.equal(created.data.call.media,'video');
+  assert.equal((await f.list(bob)).data.calls[0].media,'video');
+  assert.equal((await f.call(alice,'mvp/calls','POST',{...body,media:'audio'})).status,409);
+  await f.call(bob,`mvp/calls/${id}/end`,'POST',{});
+  const audio=await f.create();assert.equal(audio.data.call.media,'audio');
+  await f.store.run(true,d=>{delete d.calls.find(c=>c.id===audio.data.call.id).media;});
+  assert.equal((await f.list(bob)).data.calls.find(c=>c.id===audio.data.call.id).media,'audio');
+});
+
+test('signed descriptions bind camera consent to media mode and reject video in audio calls',()=>{
+  const description={type:'offer',sdp:'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\n'};
+  assert.equal(validateCallDescription({media:'video',description},{media:'video'},'offer'),description);
+  assert.throws(()=>validateCallDescription({media:'video',description},{media:'audio'},'offer'));
+  assert.throws(()=>validateCallDescription({description},{media:'audio'},'offer'));
+  assert.throws(()=>validateCallDescription({description},{media:'video'},'offer'));
+  assert.throws(()=>validateCallDescription({media:'video',description},{media:'video'},'answer'));
+  const audio={type:'offer',sdp:'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n'};
+  assert.equal(validateCallDescription({description:audio},{},'offer'),audio);
+  assert.throws(()=>validateCallDescription({media:'video',description:audio},{media:'video'},'offer'));
 });

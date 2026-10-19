@@ -264,7 +264,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     });
   });
   function bind() {
-    document.querySelectorAll('[data-audio-call]').forEach(button=>button.addEventListener('click',()=>{const chat=s.chats.find(c=>c.id===button.dataset.audioCall);if(chat)void calls.dial(chat);}));
+    document.querySelectorAll('[data-audio-call], [data-video-call]').forEach(button=>button.addEventListener('click',()=>{const chat=s.chats.find(c=>c.id===(button.dataset.audioCall??button.dataset.videoCall));if(chat)void calls.dial(chat,button.hasAttribute('data-video-call')?'video':'audio');}));
     const form = document.querySelector('#mvp-message-form');
     if (form) {
       const field = form.querySelector('textarea');

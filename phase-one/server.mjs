@@ -100,6 +100,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     ['/push.js', ['push.js', 'text/javascript; charset=utf-8']],
     ['/emoji.js', ['emoji.js', 'text/javascript; charset=utf-8']],
     ['/calls.js', ['calls.js', 'text/javascript; charset=utf-8']],
+    ['/call-description.js', ['call-description.js', 'text/javascript; charset=utf-8']],
     ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
     ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
     ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
@@ -111,7 +112,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     response.setHeader('Referrer-Policy', 'same-origin');
     response.setHeader('X-Frame-Options', 'DENY');
     response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
-    response.setHeader('Permissions-Policy', 'microphone=(self), camera=()');
+    response.setHeader('Permissions-Policy', 'microphone=(self), camera=(self)');
     try {
       const host = request.headers.host;
       const cloudOrigin = allowedOrigins.find(origin => new URL(origin).host === host);

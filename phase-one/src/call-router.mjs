@@ -10,7 +10,7 @@ export function createCallRouter({ database, db, getSession, requireChat, blocke
     if (call.status === 'ringing') return now < call.expiresAt;
     return database.sessions.some(s=>s.tokenHash===call.calleeSession && s.expiresAt>now) && now-call.callerSeenAt<60_000 && now-call.calleeSeenAt<60_000;
   };
-  const dto = call => ({ id:call.id,chatId:call.chatId,callerId:call.callerId,calleeId:call.calleeId,status:live(call)?call.status:'ended',reason:call.reason??(!live(call)?call.status==='ringing'?'missed':'disconnected':null),createdAt:call.createdAt,expiresAt:call.expiresAt,caller:person(userById(call.callerId)),callee:person(userById(call.calleeId)),offer:live(call)?call.offer:null,answer:live(call)?call.answer:null,signals:live(call)?call.signals:[] });
+  const dto = call => ({ id:call.id,media:call.media??'audio',chatId:call.chatId,callerId:call.callerId,calleeId:call.calleeId,status:live(call)?call.status:'ended',reason:call.reason??(!live(call)?call.status==='ringing'?'missed':'disconnected':null),createdAt:call.createdAt,expiresAt:call.expiresAt,caller:person(userById(call.callerId)),callee:person(userById(call.calleeId)),offer:live(call)?call.offer:null,answer:live(call)?call.answer:null,signals:live(call)?call.signals:[] });
   const end = (call,reason) => {call.status='ended';call.reason=reason;call.endedAt=Date.now();call.offer=null;call.answer=null;call.signals=[];database.pushOutbox=(database.pushOutbox??[]).filter(job=>job.callId!==call.id);};
   const device = value => {if(typeof value!=='string'||!UUID.test(value))throw fail(400,'invalid_call_device');return value;};
   const owned = (call,user,session,deviceId) => call.callerId===user.id ? call.callerSession===session.tokenHash&&call.callerDevice===deviceId : call.calleeId===user.id && (call.status==='ringing'||call.calleeSession===session.tokenHash&&call.calleeDevice===deviceId);
@@ -34,6 +34,8 @@ export function createCallRouter({ database, db, getSession, requireChat, blocke
     for(const call of database.calls)if(call.status!=='ended'&&!live(call))end(call,call.status==='ringing'?'missed':'disconnected');
     database.calls=database.calls.filter(c=>c.status!=='ended'||Date.now()-c.endedAt<10*60_000);
     if(path==='/calls') {
+      const media=body.media??'audio';
+      if(!['audio','video'].includes(media))throw fail(400,'invalid_call_media');
       if(!UUID.test(body.id))throw fail(400,'invalid_id');
       const chat=requireChat(body.chatId,user,true);
       if(chat.type!=='direct'||chat.members.length!==2||chat.members.some(m=>m.status!=='accepted'))throw fail(403,'call_contact_required');
@@ -41,12 +43,12 @@ export function createCallRouter({ database, db, getSession, requireChat, blocke
       if(blocked(user.id,callee.userId))throw fail(403,'user_blocked');
       if(!user.crypto||!userById(callee.userId)?.crypto)throw fail(409,'keys_required');
       const existing=database.calls.find(c=>c.id===body.id);
-      if(existing){if(existing.callerId!==user.id||!owned(existing,user,session,deviceId)||existing.chatId!==chat.id)throw fail(409,'call_conflict');return reply(200,{call:dto(existing)});}
+      if(existing){if(existing.callerId!==user.id||!owned(existing,user,session,deviceId)||existing.chatId!==chat.id||(existing.media??'audio')!==media)throw fail(409,'call_conflict');return reply(200,{call:dto(existing)});}
       if(database.calls.some(c=>live(c)&&[c.callerId,c.calleeId].some(id=>id===user.id||id===callee.userId)))throw fail(409,'call_busy');
       if(database.calls.filter(c=>c.callerId===user.id&&Date.now()-c.createdAt<60_000).length>=6)throw fail(429,'call_rate_limit');
       const offer=await encrypted(body.offer);
       if(database.calls.some(c=>live(c)&&[c.callerId,c.calleeId].some(id=>id===user.id||id===callee.userId)))throw fail(409,'call_busy');
-      const now=Date.now(),call={id:body.id,chatId:chat.id,callerId:user.id,calleeId:callee.userId,callerSession:session.tokenHash,callerDevice:deviceId,status:'ringing',createdAt:now,expiresAt:now+60_000,callerSeenAt:now,calleeSeenAt:now,offer,answer:null,signals:[]};
+      const now=Date.now(),call={id:body.id,media,chatId:chat.id,callerId:user.id,calleeId:callee.userId,callerSession:session.tokenHash,callerDevice:deviceId,status:'ringing',createdAt:now,expiresAt:now+60_000,callerSeenAt:now,calleeSeenAt:now,offer,answer:null,signals:[]};
       database.calls.push(call);
       queueMessagePush(database,chat,{senderId:user.id,audience:[callee.userId],type:'call',callId:call.id});
       persist();return reply(201,{call:dto(call)});

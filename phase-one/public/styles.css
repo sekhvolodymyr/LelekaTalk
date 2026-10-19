@@ -286,3 +286,10 @@ dialog::backdrop { background: #0005; backdrop-filter: blur(3px); }
 .message-composer textarea { flex: 1; min-width: 0; }
 @media (max-width: 700px) { .notification-settings { padding: 6px 15px; } .push-toggle { font-size: 10px; } .conversation { height: calc(100dvh - 239px); min-height: min(430px, calc(100dvh - 239px)); } .message-composer { gap: 5px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+#audio-call-panel.has-video { width: 620px; max-height: calc(100dvh - 100px); overflow-y: auto; }
+.call-video-stage { position: relative; margin-top: 16px; background: #151718; border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; }
+.call-video-stage[hidden], .call-video-stage [hidden] { display: none; }
+#call-remote-video { display: block; width: 100%; height: 100%; object-fit: contain; }
+#call-local-video { position: absolute; bottom: 12px; right: 12px; width: 28%; aspect-ratio: 3 / 4; max-height: 40%; object-fit: cover; transform: scaleX(-1); border: 2px solid #ffffff80; border-radius: 10px; background: #252728; }
+.call-camera-status { position: absolute; bottom: 12px; right: 12px; max-width: 50%; padding: 8px 10px; color: #fff; background: #252728; border-radius: 10px; font-size: 12px; }
+@media(max-width:700px) { #audio-call-panel.has-video { width: auto; max-height: calc(100dvh - 86px); } }
