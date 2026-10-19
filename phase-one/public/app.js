@@ -2,6 +2,7 @@ import { createWall } from '/wall.js';
 import { createMvp } from '/mvp.js';
 const words = {
   uk: {
+    supportTitle: 'Допоможи LelekaTalk зростати', supportHint: 'Твоя підтримка допомагає розвивати український месенджер.', supportButton: 'Підтримати проєкт', supportNewTab: 'Відкриється банка monobank у новій вкладці',
     tagline: 'Спілкуйся. Створюй. Будь собою.', intro: 'Твій простір для розмов, ідей та спільнот.',
     welcome: 'Раді бачити тебе', createAccount: 'Створи свій простір', login: 'Увійти', register: 'Створити акаунт',
     email: 'Email', password: 'Пароль', name: 'Твоє ім’я', username: 'Ім’я користувача',
@@ -36,6 +37,7 @@ const words = {
     errors: { invalid_email: 'Перевір email.', invalid_username: 'Username: 3–24 символи, латинські літери, цифри або _.', invalid_name: 'Ім’я має містити від 1 до 60 символів.', invalid_password: 'Пароль має містити від 12 до 256 символів.', age_confirmation_required: 'Підтвердь, що тобі виповнилося 16 років.', account_conflict: 'Email або username вже використовується.', invalid_credentials: 'Неправильний email або пароль.', too_many_attempts: 'Забагато спроб. Зачекай одну хвилину.', authentication_required: 'Увійди в акаунт ще раз.', invalid_profile: 'Перевір налаштування профілю.', server_error: 'Помилка сервера. Спробуй ще раз.' },
   },
   en: {
+    supportTitle: 'Help LelekaTalk grow', supportHint: 'Your support helps develop this Ukrainian messenger.', supportButton: 'Support the project', supportNewTab: 'Opens the monobank jar in a new tab',
     tagline: 'Connect. Create. Be yourself.', intro: 'Your space for conversations, ideas and communities.',
     welcome: 'Welcome back', createAccount: 'Create your own space', login: 'Log in', register: 'Create account',
     email: 'Email', password: 'Password', name: 'Your name', username: 'Username', passwordHint: 'At least 12 characters', age: 'I am at least 16 years old',
@@ -137,6 +139,9 @@ function bindLogoErrors() {
 }
 function displayName() { return state.user.activeProfile === 'creator' ? state.user.creatorName : state.user.personalName; }
 function initials() { return escapeHTML(displayName().slice(0, 1).toUpperCase()); }
+function supportCard(placement) {
+  return `<section class="support-card support-${placement}" aria-label="${text('supportButton')}"><strong>${text('supportTitle')}</strong><p>${text('supportHint')}</p><a class="button support-button" href="https://send.monobank.ua/jar/5EU4CX6Cmd" target="_blank" rel="noopener noreferrer" aria-label="${text('supportButton')}. ${text('supportNewTab')}"><span aria-hidden="true">♡</span>${text('supportButton')}<span aria-hidden="true">↗</span></a></section>`;
+}
 function renderAuth() {
   applyPreferences();
   const registration = state.authMode === 'register';
@@ -157,6 +162,7 @@ function renderAuth() {
         </form>
         <p class="auth-switch">${text(registration ? 'hasAccount' : 'noAccount')} <button class="text-button" data-action="auth-mode">${text(registration ? 'login' : 'register')}</button></p>
         <p class="local-notice">${text('localNotice')}</p>
+        ${supportCard('auth')}
       </div>
     </section></main>`;
   bindLogoErrors();
@@ -200,7 +206,7 @@ function renderShell() {
       <button class="new-chat" data-mvp="new-chat">${icon('plus')}<span>${text('newChat')}</span>${icon('pencil')}</button>
       <nav aria-label="LelekaTalk">${navItems(navigation)}</nav>
       ${mvp.sidebar()}<div class="sidebar-divider"></div><nav aria-label="${text('space')}">${navItems(tools)}</nav>
-      <div class="sidebar-bottom"><button class="profile-button" data-action="switch-profile"><span class="avatar">${initials()}</span><span><strong>${escapeHTML(displayName())}</strong><small>${text(state.user.activeProfile)}</small></span>${icon('chevron')}</button></div>
+      <div class="sidebar-footer">${supportCard('sidebar')}<div class="sidebar-bottom"><button class="profile-button" data-action="switch-profile"><span class="avatar">${initials()}</span><span><strong>${escapeHTML(displayName())}</strong><small>${text(state.user.activeProfile)}</small></span>${icon('chevron')}</button></div></div>
     </aside>
     <div class="mobile-scrim" data-action="close-menu"></div>
     <main class="workspace"><header class="topbar"><div class="topbar-left"><button class="icon-button mobile-menu" data-action="menu" aria-label="${text('menu')}">${icon('menu')}</button><span>${text(state.view)}</span></div><div class="topbar-actions"><span class="version-pill">MVP 0.2</span>${installPrompt ? `<button class="button small secondary" data-action="install">${text('install')}</button>` : ''}<button class="profile-pill" data-action="switch-profile">${text(state.user.activeProfile)}${icon('chevron')}</button><button class="icon-button" data-action="settings" aria-label="${text('settings')}">${icon('settings')}</button></div></header>

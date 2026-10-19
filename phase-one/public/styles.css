@@ -405,3 +405,15 @@ body[data-theme='midnight'] .build-note { background:#283d52; color:#d0e1f5; }
 #google-event-form .checkbox { display:flex; gap:10px; align-items:center; }
 #google-event-form .field-note { margin-bottom:16px; }
 @media(max-width:700px) { .google-calendar-card { padding:18px 14px; } .google-calendar-card h2 { font-size:17px; } .google-calendar-card>header { gap:12px; } .google-calendar-card>header .button { font-size:11px; } .google-event { align-items:flex-start; } .google-event>div:last-child { flex-direction:column; } .space-calendar-navigation .button { flex:1; padding:8px 10px; font-size:11px; } }
+.sidebar-footer { margin-top:auto; }
+.support-card { border:1px solid var(--border); background:var(--panel); border-radius:16px; padding:17px; }
+.support-card>strong { display:block; color:var(--text); font-size:14px; line-height:1.5; }
+.support-card>p { margin:7px 0 14px; color:var(--muted); font-size:12px; line-height:1.6; }
+.support-button { width:100%; background:var(--accent); color:#29230e; font-size:12px; padding:10px 12px; }
+.support-button>span:last-child { margin-left:auto; }
+.support-button>span:first-child { font-size:20px; line-height:1; }
+.support-button:hover { filter:brightness(.96); }
+.support-auth { margin-top:25px; text-align:left; }
+.support-sidebar { margin:22px 0 16px; padding:14px; }
+.support-sidebar>strong { font-size:13px; }
+.support-sidebar>p { font-size:11px; }
