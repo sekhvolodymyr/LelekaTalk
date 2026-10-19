@@ -293,3 +293,55 @@ dialog::backdrop { background: #0005; backdrop-filter: blur(3px); }
 #call-local-video { position: absolute; bottom: 12px; right: 12px; width: 28%; aspect-ratio: 3 / 4; max-height: 40%; object-fit: cover; transform: scaleX(-1); border: 2px solid #ffffff80; border-radius: 10px; background: #252728; }
 .call-camera-status { position: absolute; bottom: 12px; right: 12px; max-width: 50%; padding: 8px 10px; color: #fff; background: #252728; border-radius: 10px; font-size: 12px; }
 @media(max-width:700px) { #audio-call-panel.has-video { width: auto; max-height: calc(100dvh - 86px); } }
+.wall-page { width: min(100%, 680px); margin: 4px auto 40px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.wall-heading { display: flex; align-items: center; justify-content: space-between; padding: 12px 4px 28px; }
+.wall-eyebrow { color: var(--muted); font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; }
+.wall-heading h1 { font-size: 32px; letter-spacing: -1.2px; margin: 8px 0; }
+.wall-heading p { margin: 0; font-size: 14px; color: var(--muted); }
+.wall-compose { display: flex; gap: 14px; padding: 22px; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); }
+.wall-avatar { width: 42px; height: 42px; display: inline-grid; place-items: center; flex-shrink: 0; background: var(--accent); color: #30230a; border-radius: 50%; font-weight: 650; font-size: 17px; }
+.wall-compose-body { flex: 1; min-width: 0; }
+.wall-compose-body strong { font-size: 14px; }
+.wall-compose textarea { border: 0; padding: 14px 0; min-height: 100px; resize: vertical; font-size: 16px; line-height: 1.6; border-radius: 0; }
+.wall-compose footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wall-compose footer>span { font-size: 11px; color: var(--muted); line-height: 1.6; }
+#wall-count { display: block; font-variant-numeric: tabular-nums; }
+.wall-compose .button { min-height: 38px; padding: 9px 18px; font-size: 13px; }
+.wall-tabs { display: flex; margin-top: 22px; border-bottom: 1px solid var(--border); }
+.wall-tabs button { flex: 1; padding: 18px 6px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; font-size: 14px; }
+.wall-tabs button.selected { color: var(--text); border-bottom-color: var(--text); }
+.wall-post { padding: 24px 4px; border-bottom: 1px solid var(--border); }
+.wall-post-layout { display: flex; gap: 14px; }
+.wall-post-body { flex: 1; min-width: 0; }
+.wall-post header, .wall-reply header { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; min-height: 25px; }
+.wall-post header strong, .wall-reply strong { font-size: 14px; overflow-wrap: anywhere; }
+.wall-handle, .wall-post time, .wall-reply time { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.wall-post-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 15px; margin: 8px 0 14px; }
+.wall-actions { display: flex; gap: 16px; }
+.wall-action { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 38px; gap: 6px; padding: 4px; color: var(--text); background: transparent; border: 0; border-radius: 10px; font-size: 12px; }
+.wall-action:hover { background: var(--hover); }
+.wall-action svg { width: 20px; height: 20px; }
+.wall-action[data-wall='like'].is-active { color: #db354d; }
+.wall-action[data-wall='like'].is-active svg { fill: currentColor; }
+.wall-action[data-wall='repost'].is-active { color: #26845c; }
+.wall-more { margin-left: auto; position: relative; }
+.wall-more summary { list-style: none; cursor: pointer; padding: 0 8px; font-size: 22px; line-height: 24px; }
+.wall-more summary::-webkit-details-marker { display: none; }
+.wall-more button { position: absolute; top: 28px; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 18px; color: #c63145; z-index: 2; box-shadow: 0 4px 16px #0001; }
+.wall-repost-label { margin: 0 0 12px 56px; color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 7px; }
+.wall-repost-label svg { width: 14px; height: 14px; }
+.wall-empty { text-align: center; padding: 48px 18px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.wall-empty h2 { color: var(--text); font-size: 19px; margin-top: 16px; }
+.wall-empty-mark { font-size: 38px; color: var(--text); }
+.wall-back { margin: 0 0 12px; }
+.wall-thread { padding: 24px 4px; }
+.wall-thread h2 { font-size: 15px; margin: 0 0 24px; }
+.wall-thread h2 span { color: var(--muted); margin-left: 8px; }
+.wall-reply { display: flex; gap: 14px; margin: 0 0 22px; }
+.wall-reply>div { flex: 1; min-width: 0; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+.wall-reply .wall-avatar { width: 34px; height: 34px; font-size: 14px; }
+.wall-reply .text-button { font-size: 11px; color: var(--muted); }
+#wall-reply-form { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.wall-load { display: block; margin: 24px auto; }
+@media(max-width:700px) { .wall-page { margin-top: 0; } .wall-heading { padding: 8px 0 22px; } .wall-heading h1 { font-size: 27px; } .wall-compose { padding: 16px 12px; gap: 10px; border-radius: 18px; } .wall-avatar { width: 36px; height: 36px; font-size: 15px; } .wall-compose footer>span { max-width: 130px; font-size: 10px; } .wall-compose .button { padding: 8px 12px; font-size: 12px; } .wall-post-layout { gap: 10px; } .wall-post { padding: 22px 0; } .wall-post .wall-handle { display: none; } .wall-actions { gap: 10px; } .wall-repost-label { margin-left: 46px; } }

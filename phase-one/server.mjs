@@ -96,6 +96,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     ['/index.html', ['index.html', 'text/html; charset=utf-8']],
     ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
     ['/mvp.js', ['mvp.js', 'text/javascript; charset=utf-8']],
+    ['/wall.js', ['wall.js', 'text/javascript; charset=utf-8']],
     ['/crypto.js', ['crypto.js', 'text/javascript; charset=utf-8']],
     ['/push.js', ['push.js', 'text/javascript; charset=utf-8']],
     ['/emoji.js', ['emoji.js', 'text/javascript; charset=utf-8']],
