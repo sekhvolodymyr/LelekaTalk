@@ -152,3 +152,24 @@ test('calendar and habits store encrypted names, enforce ownership and use idemp
   await app.call(alice, `mvp/plans/${planId}`, 'DELETE');
   assert.equal((await app.call(alice, 'mvp/plans')).data.plans.length, 0);
 });
+
+test('calendar events can be renamed and rescheduled privately with atomic validation and ownership checks',async t=>{
+  const app=await fixture(t),alice=await app.actor('alice'),bob=await app.actor('bob'),id=randomUUID();
+  const ciphertext=await app.encrypt(alice,[alice],{kind:'plan',id,title:'Original private title'});
+  await app.call(alice,'mvp/plans','POST',{id,date:'2026-10-19',time:'09:00',ciphertext});
+  const changed=await app.encrypt(alice,[alice],{kind:'plan',id,title:'Edited private title'});
+  assert.equal((await app.call(bob,`mvp/plans/${id}`,'PATCH',{date:'2026-10-20',ciphertext:changed})).status,404);
+  assert.equal((await app.call(alice,`mvp/plans/${id}`,'PATCH',{date:'2026-10-20',time:'25:00',ciphertext:changed})).status,400);
+  assert.equal((await app.call(alice,'mvp/plans')).data.plans[0].date,'2026-10-19');
+  assert.equal((await app.call(alice,`mvp/plans/${id}`,'PATCH',{title:'plaintext'})).status,400);
+  assert.equal((await app.call(alice,`mvp/plans/${id}`,'PATCH',{date:'2026-10-20',time:'14:30',ciphertext:changed})).status,200);
+  const plan=(await app.call(alice,'mvp/plans')).data.plans[0];assert.equal(plan.date,'2026-10-20');assert.equal(plan.time,'14:30');assert.equal((await app.decrypt(alice,alice,plan.ciphertext)).title,'Edited private title');assert.ok(!app.stored().includes('Edited private title'));
+});
+
+test('Google Calendar configuration exposes only the public client ID to authenticated users',async t=>{
+  const previous=process.env.GOOGLE_CALENDAR_CLIENT_ID;t.after(()=>{if(previous===undefined)delete process.env.GOOGLE_CALENDAR_CLIENT_ID;else process.env.GOOGLE_CALENDAR_CLIENT_ID=previous;});
+  const app=await fixture(t),alice=await app.actor('alice');
+  assert.equal((await app.call(null,'mvp/google-calendar/config')).status,401);
+  process.env.GOOGLE_CALENDAR_CLIENT_ID='123-app.apps.googleusercontent.com';assert.deepEqual((await app.call(alice,'mvp/google-calendar/config')).data,{clientId:'123-app.apps.googleusercontent.com'});
+  process.env.GOOGLE_CALENDAR_CLIENT_ID='not-a-client';assert.deepEqual((await app.call(alice,'mvp/google-calendar/config')).data,{clientId:null});
+});

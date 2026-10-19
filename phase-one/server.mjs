@@ -97,6 +97,8 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
     ['/mvp.js', ['mvp.js', 'text/javascript; charset=utf-8']],
     ['/wall.js', ['wall.js', 'text/javascript; charset=utf-8']],
+    ['/google-calendar.js', ['google-calendar.js', 'text/javascript; charset=utf-8']],
+    ['/calendar-utils.js', ['calendar-utils.js', 'text/javascript; charset=utf-8']],
     ['/crypto.js', ['crypto.js', 'text/javascript; charset=utf-8']],
     ['/push.js', ['push.js', 'text/javascript; charset=utf-8']],
     ['/emoji.js', ['emoji.js', 'text/javascript; charset=utf-8']],
@@ -112,7 +114,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'same-origin');
     response.setHeader('X-Frame-Options', 'DENY');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://www.googleapis.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     response.setHeader('Permissions-Policy', 'microphone=(self), camera=(self)');
     try {
       const host = request.headers.host;

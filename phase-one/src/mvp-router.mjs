@@ -109,6 +109,10 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     }
 
     if (pathname === '/time' && method === 'GET') return reply(200, { serverTime: Date.now() });
+    if (pathname === '/google-calendar/config' && method === 'GET') {
+      const clientId=process.env.GOOGLE_CALENDAR_CLIENT_ID??'';
+      return reply(200,{clientId:/^[\w-]+\.apps\.googleusercontent\.com$/.test(clientId)?clientId:null});
+    }
     if (pathname === '/crypto' && method === 'GET') return reply(200, { vault: user.crypto ?? null, serverTime: Date.now() });
     if (pathname === '/crypto' && method === 'POST') {
       if (user.crypto) throw fail(409, 'key_already_enrolled');
@@ -337,8 +341,13 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
       else {
         const body = await readBody(request);
         if (collection === 'plans') {
-          if (typeof body.done !== 'boolean') throw fail(400, 'invalid_done');
-          record.done = body.done;
+          if(Object.keys(body).some(key=>!['done','date','time','ciphertext'].includes(key))||!Object.keys(body).length)throw fail(400,'invalid_payload');
+          const changes={};
+          if(body.done!==undefined){if(typeof body.done!=='boolean')throw fail(400,'invalid_done');changes.done=body.done;}
+          if(body.date!==undefined)changes.date=date(body.date);
+          if(body.time!==undefined){if(typeof body.time!=='string'||body.time&&!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(body.time))throw fail(400,'invalid_time');changes.time=body.time;}
+          if(body.ciphertext!==undefined)changes.ciphertext=await encrypted(body.ciphertext);
+          Object.assign(record,changes);
         } else {
           const day = date(body.date);
           if (typeof body.completed !== 'boolean') throw fail(400, 'invalid_done');
