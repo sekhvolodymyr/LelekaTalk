@@ -97,6 +97,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
     ['/mvp.js', ['mvp.js', 'text/javascript; charset=utf-8']],
     ['/wall.js', ['wall.js', 'text/javascript; charset=utf-8']],
+    ['/studio.js', ['studio.js', 'text/javascript; charset=utf-8']],
     ['/google-calendar.js', ['google-calendar.js', 'text/javascript; charset=utf-8']],
     ['/calendar-utils.js', ['calendar-utils.js', 'text/javascript; charset=utf-8']],
     ['/crypto.js', ['crypto.js', 'text/javascript; charset=utf-8']],
@@ -183,6 +184,8 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
       if (route === '/api/logout' && request.method === 'POST') {
         const token = /(?:^|;\s*)leleka_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie ?? '')?.[1];
         if (token) database.sessions = database.sessions.filter(item => item.tokenHash !== hash(token));
+        database.studioLives = (database.studioLives ?? []).filter(room => room.sessionHash !== hash(token ?? ''));
+        for (const room of database.studioLives) room.viewers = room.viewers.filter(viewer => viewer.sessionHash !== hash(token ?? ''));
         for (const call of database.calls ?? []) if (call.status !== 'ended' && [call.callerSession,call.calleeSession].includes(hash(token ?? ''))) { call.status='ended';call.reason='ended';call.endedAt=Date.now();call.offer=null;call.answer=null;call.signals=[]; }
         const removed = (database.pushSubscriptions ?? []).filter(item => item.sessionHash === hash(token ?? ''));
         database.pushSubscriptions = (database.pushSubscriptions ?? []).filter(item => !removed.includes(item));

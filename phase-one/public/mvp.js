@@ -31,7 +31,7 @@ function streak(dates) {
   return count;
 }
 
-export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, toast, renderShell }) {
+export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, toast, renderShell, beforeChat = async () => true }) {
   const s = { chats: [], selectedChat: null, messages: [], hasMore: false, channels: [], selectedChannel: null, posts: [], feeds: { forYou: [], subscriptions: [] }, plans: [], habits: [], day: localDate(), topic: '', query: '', cryptoStatus: 'loading', recoveryCode: null, selectedUsers: [], users: [], searchQuery: '', newMode: 'direct', groupTitle: '', inviteChat: null };
   const drafts = new Map();
   const decrypted = new Map();
@@ -218,6 +218,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
     const action = button.dataset.mvp;
     if (action === 'close') { dialog.close(); return; }
     run(async () => {
+      if(['new-chat','open-chat'].includes(action)&&!await beforeChat())return;
       const id = button.dataset.id;
       if (action === 'notifications') { try { await toggleNotifications(api, getState().language); } finally { redraw(); } }
       else if (action === 'new-chat' || action === 'invite') {

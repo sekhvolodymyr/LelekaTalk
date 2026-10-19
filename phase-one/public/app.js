@@ -1,4 +1,5 @@
 import { createWall } from '/wall.js';
+import { createStudio } from '/studio.js';
 import { createMvp } from '/mvp.js';
 const words = {
   uk: {
@@ -9,7 +10,7 @@ const words = {
     passwordHint: 'Щонайменше 12 символів', age: 'Мені виповнилося 16 років',
     noAccount: 'Ще немає акаунта?', hasAccount: 'Уже маєш акаунт?', working: 'Зачекай…',
     localNotice: 'MVP · підтвердження email ще не підключене',
-    wall:'Моя стіна', chats: 'Чати', feed: 'Стрічка', communities: 'Спільноти', space: 'Мій простір', studio: 'Креативна студія', assistant: 'ШІ-помічник',
+    wall:'Моя стіна', chats: 'Чати', feed: 'Стрічка', communities: 'Спільноти', space: 'Мій простір', studio: 'Моя студія', assistant: 'ШІ-помічник',
     subscriptions: 'Підписки', forYou: 'Для вас', personal: 'Особистий профіль', creator: 'Профіль креатора',
     newChat: 'Новий чат', search: 'Пошук розмов', noChats: 'Тут з’являться твої розмови', noChatsHint: 'Почни з налаштування свого профілю.',
     hello: 'Привіт', homeTitle: 'Розмови починаються тут', homeHint: 'Місце для близьких людей, спільних ідей і нових знайомств.',
@@ -43,7 +44,7 @@ const words = {
     email: 'Email', password: 'Password', name: 'Your name', username: 'Username', passwordHint: 'At least 12 characters', age: 'I am at least 16 years old',
     noAccount: 'New here?', hasAccount: 'Already have an account?', working: 'Please wait…',
     localNotice: 'MVP · email verification is not connected yet',
-    wall:'My wall', chats: 'Chats', feed: 'Feed', communities: 'Communities', space: 'My space', studio: 'Creative studio', assistant: 'AI assistant',
+    wall:'My wall', chats: 'Chats', feed: 'Feed', communities: 'Communities', space: 'My space', studio: 'My studio', assistant: 'AI assistant',
     subscriptions: 'Following', forYou: 'For you', personal: 'Personal profile', creator: 'Creator profile',
     newChat: 'New chat', search: 'Search conversations', noChats: 'Your conversations will appear here', noChatsHint: 'Start by setting up your profile.',
     hello: 'Hello', homeTitle: 'Conversations start here', homeHint: 'A place for your people, shared ideas and new connections.',
@@ -96,7 +97,7 @@ function writePreference(key, value) { try { localStorage.setItem(`leleka:${key}
 const state = {
   language: readPreference('language', 'uk') === 'en' ? 'en' : 'uk',
   theme: validTheme(readPreference('theme','light')) ? readPreference('theme','light') : 'light',
-  view: ['chats', 'wall', 'feed', 'communities'].includes(readPreference('tab', 'chats')) ? readPreference('tab', 'chats') : 'chats',
+  view: ['chats', 'wall', 'feed', 'communities', 'studio'].includes(readPreference('tab', 'chats')) ? readPreference('tab', 'chats') : 'chats',
   feed: 'forYou', user: null, authMode: 'login', busy: false,
 };
 const app = document.querySelector('#app');
@@ -105,7 +106,8 @@ let installPrompt = null;
 let toastTimer;
 const text = key => words[state.language][key];
 const wall = createWall({api,getState:()=>state,escapeHTML,toast,renderShell});
-const mvp = createMvp({ api, getState: () => state, escapeHTML, icon, text, toast, renderShell });
+const studio = createStudio({api,getState:()=>state,escapeHTML,toast});
+const mvp = createMvp({ api, getState: () => state, escapeHTML, icon, text, toast, renderShell, beforeChat:()=>state.view!=='studio'||studio.beforeLeave() });
 function applyPreferences() {
   document.documentElement.lang = state.language;
   document.body.dataset.theme = previewTheme ?? state.theme;
@@ -183,7 +185,7 @@ async function submitAuth(event) {
   try {
     const result = await api(registration ? 'register' : 'login', { method: 'POST', body: { email: fields.get('email'), password: fields.get('password'), name: fields.get('name'), username: fields.get('username'), ageConfirmed: fields.get('age') === 'on' } });
     state.user = result.user;
-    await Promise.all([mvp.start(state.user), wall.start()]);
+    await Promise.all([mvp.start(state.user), wall.start()]); await studio.start(state.user); renderShell();
   } catch (error) {
     errorElement.textContent = error.message;
     errorElement.hidden = false;
@@ -194,13 +196,14 @@ async function submitAuth(event) {
     button.textContent = text(registration ? 'register' : 'login');
   }
 }
-const navigation = [['chats', 'chat'], ['wall', 'pencil'], ['feed', 'feed'], ['communities', 'people']];
+const navigation = [['chats', 'chat'], ['wall', 'pencil'], ['feed', 'feed'], ['communities', 'people'], ['studio','video']];
 const tools = [['space', 'grid']];
 function navItems(items) {
   return items.map(([key, graphic]) => `<button class="nav-item ${state.view === key ? 'active' : ''}" data-view="${key}" ${state.view === key ? 'aria-current="page"' : ''}>${icon(graphic)}<span>${text(key)}</span></button>`).join('');
 }
 function renderShell() {
   applyPreferences();
+  studio.beforeRender();
   app.innerHTML = `<div class="app-shell">
     <aside class="sidebar"><a class="brand" href="/">${logo()}<strong>LelekaTalk</strong></a>
       <button class="new-chat" data-mvp="new-chat">${icon('plus')}<span>${text('newChat')}</span>${icon('pencil')}</button>
@@ -216,11 +219,13 @@ function renderShell() {
   bindLogoErrors();
   mvp.bind();
   wall.bind();
+  studio.bind();
 }
 function featureCard(graphic, title, description) {
   return `<button class="feature-card" data-action="coming"><span class="feature-icon">${icon(graphic)}</span><h3>${text(title)}</h3><p>${text(description)}</p><span class="planned-tag">${text('planned')}</span></button>`;
 }
 function renderView() {
+  if(state.view==='studio')return studio.render();
   if(state.view==='wall')return wall.render();
   const implemented = mvp.view(state.view);
   if (implemented !== null) return implemented;
@@ -277,8 +282,9 @@ document.addEventListener('click', async event => {
   if (!button || button.disabled) return;
   if (state.busy) return;
   if (button.dataset.view && state.user) {
+    if(state.view==='studio'&&button.dataset.view!=='studio'&&!await studio.beforeLeave())return;
     state.view = button.dataset.view;
-    if (['chats', 'wall', 'feed', 'communities'].includes(state.view)) writePreference('tab', state.view);
+    if (['chats', 'wall', 'feed', 'communities', 'studio'].includes(state.view)) writePreference('tab', state.view);
     if(state.view==='wall'){renderShell();await wall.refresh();}
     else if (['feed', 'communities', 'space'].includes(state.view)) await mvp.refresh();
     else renderShell();
@@ -311,8 +317,9 @@ document.addEventListener('click', async event => {
     finally { state.busy = false; mvp.syncBusyControls(); }
   }
   if (action === 'logout') {
+    if(!await studio.beforeLeave(true))return;
     state.busy = true;
-    try { await api('logout', { method: 'POST' }); wall.stop(); await mvp.stop(state.user.id); state.user = null; dialog.close(); renderAuth(); }
+    try { await studio.stop(); await api('logout', { method: 'POST' }); wall.stop(); await mvp.stop(state.user.id); state.user = null; dialog.close(); renderAuth(); }
     catch (error) { toast(error.message); }
     finally { state.busy = false; mvp.syncBusyControls(); }
   }
@@ -329,7 +336,7 @@ async function start() {
   applyPreferences();
   try { state.user = (await api('me')).user; }
   catch (error) { if (error.status !== 401) toast(error.message); }
-  if (state.user) { await Promise.all([mvp.start(state.user), wall.start()]); }
+  if (state.user) { await Promise.all([mvp.start(state.user), wall.start()]); await studio.start(state.user); renderShell(); }
   else renderAuth();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { /* Online operation does not depend on installation support. */ });
 }

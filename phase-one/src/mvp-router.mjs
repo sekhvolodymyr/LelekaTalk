@@ -3,6 +3,7 @@ import * as openpgp from 'openpgp';
 import { validSubscription, queueMessagePush } from './push-service.mjs';
 import { createCallRouter } from './call-router.mjs';
 import { createWallRouter } from './wall-router.mjs';
+import { createStudioRouter } from './studio-router.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TOPICS = ['creative', 'technology', 'learning', 'life'];
@@ -73,6 +74,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
 
   const callRouter = createCallRouter({ database, db, getSession, requireChat, blocked, person, userById, encrypted, readBody, persist, fail });
   const wallRouter = createWallRouter({ database, blocked, readBody, persist, fail });
+  const studioRouter = createStudioRouter({database,db,getSession,blocked,userById,encrypted,readBody,persist,fail});
   return async function route(request, response, url) {
     if (!url.pathname.startsWith('/api/mvp/')) return false;
     const user = getUser(request);
@@ -82,6 +84,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     const reply = (status, value) => { send(response, status, value); return true; };
     if (await callRouter(request,url,user,reply)) return true;
     if (await wallRouter(request,url,user,reply)) return true;
+    if (await studioRouter(request,url,user,reply)) return true;
 
     if (pathname === '/push' && method === 'GET') {
       const session = getSession(request);
