@@ -3,7 +3,7 @@ export function createWall({api,getState,escapeHTML:e,toast,renderShell}){
   const t=key=>words[getState().language==='en'?'en':'uk'][key];
   const paths={heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',reply:'<path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z"/>',repost:'<path d="m16 3 4 4-4 4M20 7H7a3 3 0 0 0-3 3v2m4 9-4-4 4-4m-4 4h13a3 3 0 0 0 3-3v-2"/>',share:'<path d="m22 2-7 20-4-9-9-4L22 2ZM22 2 11 13"/>'};
   const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
-  let entries=[],cursor=null,mode='all',threadId=null,thread=null,draft='',draftId=crypto.randomUUID(),busy=false,loading=true,loadError=false,generation=0;
+  let entries=[],cursor=null,mode='all',threadId=null,thread=null,draft='',draftId=crypto.randomUUID(),busy=false,loading=true,loadError=false,generation=0,requestVersion=0;
   const replies=new Map();
   const redraw=()=>{if(getState().user&&getState().view==='wall')renderShell();};
   const request=(path='',options)=>api(`mvp/wall${path}`,options);
@@ -20,14 +20,15 @@ export function createWall({api,getState,escapeHTML:e,toast,renderShell}){
     return `<section class="wall-page">${header}<form id="wall-compose" class="wall-compose">${avatar({name:user.personalName})}<div class="wall-compose-body"><strong>${e(user.personalName)}</strong><label class="sr-only" for="wall-compose-text">${t('placeholder')}</label><textarea id="wall-compose-text" name="text" maxlength="500" rows="3" placeholder="${t('placeholder')}" required>${e(draft)}</textarea><footer><span>${t('public')} <span id="wall-count">${draft.length}/500</span></span><button class="button primary" ${busy?'disabled':''}>${t('publish')}</button></footer></div></form><nav class="wall-tabs" aria-label="${t('title')}">${['all','mine'].map(key=>`<button data-wall="filter" data-mode="${key}" aria-pressed="${mode===key}" class="${mode===key?'selected':''}" ${busy?'disabled':''}>${t(key)}</button>`).join('')}</nav>${loading?`<p class="wall-empty" role="status">${t('loading')}</p>`:loadError?`<p class="wall-empty" role="alert">${t('error')}</p>`:entries.length?`<div class="wall-posts">${entries.map(entry=>card(entry.post,entry.id,entry.repostBy)).join('')}</div>${cursor?`<button class="button secondary wall-load" data-wall="load" ${busy?'disabled':''}>${t('load')}</button>`:''}`:`<div class="wall-empty"><span class="wall-empty-mark">✳</span><h2>${t('empty')}</h2><p>${t('emptyHint')}</p></div>`}</section>`;
   }
   async function refresh(append=false){
-    const epoch=generation,selected=threadId,filter=mode;
+    const epoch=generation,selected=threadId,filter=mode,version=++requestVersion;
+    const current=()=>epoch===generation&&version===requestVersion&&selected===threadId&&filter===mode;
     try{
       const result=await request(selected?`/${selected}`:`?mode=${filter}${append&&cursor?`&before=${cursor}`:''}`);
-      if(epoch!==generation||selected!==threadId||filter!==mode)return;
+      if(!current())return;
       if(selected)thread=result;else{entries=append?[...new Map([...entries,...result.entries].map(entry=>[entry.id,entry])).values()]:result.entries;cursor=result.nextCursor;}
       loadError=false;
-    }catch(error){if(epoch===generation)loadError=true;}
-    finally{if(epoch===generation){loading=false;redraw();}}
+    }catch(error){if(current())loadError=true;}
+    finally{if(current()){loading=false;redraw();}}
   }
   async function run(action){if(busy)return;busy=true;const epoch=generation;redraw();try{await action(epoch);}catch(error){if(epoch===generation)toast(t(error.status===404?'missing':error.status===429?'rate':error.code==='invalid_text'?'limit':'failed'));}finally{if(epoch===generation){busy=false;redraw();}}}
   function apply(post){entries=entries.map(entry=>entry.post.id===post.id?{...entry,post}:entry);if(thread?.post.id===post.id)thread.post=post;}
