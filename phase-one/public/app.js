@@ -294,7 +294,7 @@ document.addEventListener('click', async event => {
     state.view = button.dataset.view;
     if (['chats', 'wall', 'feed', 'communities', 'studio'].includes(state.view)) writePreference('tab', state.view);
     if(state.view==='wall'){renderShell();await wall.refresh();}
-    else if (['feed', 'communities', 'space'].includes(state.view)) await mvp.refresh();
+    else if (['feed', 'communities', 'space'].includes(state.view)) { renderShell(); await mvp.refresh(); }
     else renderShell();
     return;
   }

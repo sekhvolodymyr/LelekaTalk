@@ -46,13 +46,7 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
   const selected = () => s.chats.find(chat => chat.id === s.selectedChat);
   const chatName = chat => chat.type === 'group' ? chat.title : chat.members.find(member => member.id !== getState().user.id)?.name ?? t('direct');
   const errorText = error => vocabulary[getState().language].errors[error.code ?? error.message] ?? (error.status ? error.message : getState().language === 'uk' ? 'Не вдалося виконати дію. Перевір дані або код відновлення.' : 'Action failed. Check the data or recovery code.');
-  async function request(route, options) {
-    try { return await api(`mvp/${route}`, options); }
-    catch (error) {
-      if (error.message === appText('unavailable')) throw error;
-      throw error;
-    }
-  }
+  const request = (route, options) => api(`mvp/${route}`, options);
   const actionButton = (action, title, extra = '', style = 'secondary') => `<button type="button" class="button ${style}" data-mvp="${action}" ${extra}>${e(t(title))}</button>`;
   function redraw() { if (getState().user) renderShell(); }
   function openDialog(title, body) {
@@ -301,13 +295,15 @@ export function createMvp({ api, getState, escapeHTML: e, icon, text: appText, t
       field.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } });
       form.addEventListener('submit', event => { event.preventDefault(); run(async () => {
         const chat = selected();
-        const content = field.value.trim();
+        const submittedDraft = field.value;
+        const content = submittedDraft.trim();
         if (!content || content.length > 4000) throw new Error('invalid_text');
         const id = crypto.randomUUID();
         const envelope = { kind: 'message', id, chatId: chat.id, senderId: getState().user.id, text: content };
         const ciphertext = await encryption.encryptEnvelope(envelope, chat.members.filter(member => member.status === 'accepted'));
         await request(`chats/${chat.id}/messages`, { method: 'POST', body: { id, ciphertext, revision: chat.revision } });
-        drafts.delete(chat.id); decrypted.set(id, { ciphertext, value: envelope }); await readMessages(); await refreshData(); redraw();
+        if (drafts.get(chat.id) === submittedDraft) drafts.delete(chat.id);
+        decrypted.set(id, { ciphertext, value: envelope }); await readMessages(); await refreshData(); redraw();
       }); });
       const list = document.querySelector('#mvp-messages');
       if (list) list.scrollTop = list.scrollHeight;
