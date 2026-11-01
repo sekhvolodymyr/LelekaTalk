@@ -112,7 +112,13 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
     ['/icon.svg', ['icon.svg', 'image/svg+xml']],
   ]);
 
-  return http.createServer(async (request, response) => {
+  let writer = Promise.resolve();
+  function mutate(action) {
+    const result = writer.then(action);
+    writer = result.catch(() => {});
+    return result;
+  }
+  async function handle(request, response) {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'same-origin');
     response.setHeader('X-Frame-Options', 'DENY');
@@ -222,10 +228,16 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
       if (response.headersSent) return response.end();
       if (!error.status) console.error('Request failed:', error.message);
       send(response, error.status ?? 500, { error: error.code ?? 'server_error' });
-    } finally {
-      if (!managedDatabase && database.pushOutbox?.length && pushService) {
-        await pushService.drain({ run: async (mutating, action) => { const result = await action(database); if (mutating) persist(); return result; } }).catch(() => console.error('Push delivery deferred.'));
-      }
+    }
+  }
+  return http.createServer(async (request, response) => {
+    if (['POST', 'PATCH', 'DELETE'].includes(request.method)) await mutate(() => handle(request, response));
+    else await handle(request, response);
+    // Network delivery stays outside the writer; only outbox updates join it.
+    if (!managedDatabase && database.pushOutbox?.length && pushService) {
+      await pushService.drain({ run: (mutating, action) => mutating
+        ? mutate(async () => { const result = await action(database); persist(); return result; })
+        : action(database) }).catch(() => console.error('Push delivery deferred.'));
     }
   });
 }
