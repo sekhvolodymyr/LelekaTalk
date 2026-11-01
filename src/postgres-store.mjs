@@ -6,13 +6,13 @@ export const emptyDatabase = () => ({ version: 1, users: [], sessions: [], mvp: 
 // Compatibility store for the first MVP. A row lock prevents concurrent
 // serverless instances from overwriting another request's updates.
 // Large deployments should migrate the individual collections to tables.
-export function createPostgresStore(connectionString, { bootstrap = process.env.LELEKA_DATABASE_BOOTSTRAP !== 'false' } = {}) {
+export function createPostgresStore(connectionString, { bootstrap = process.env.LELEKA_DATABASE_BOOTSTRAP !== 'false', pool: suppliedPool } = {}) {
   const databaseUrl = new URL(connectionString);
   const supabase = databaseUrl.hostname.endsWith('.pooler.supabase.com');
   if (supabase) {
     for (const parameter of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert']) databaseUrl.searchParams.delete(parameter);
   }
-  const pool = new pg.Pool({ connectionString: databaseUrl.toString(), ...(supabase ? { ssl: { ca: readFileSync(new URL('../certs/supabase-prod-ca-2021.crt', import.meta.url), 'utf8'), rejectUnauthorized: true } } : {}), max: 3, connectionTimeoutMillis: 10000, idleTimeoutMillis: 10000 });
+  const pool = suppliedPool ?? new pg.Pool({ connectionString: databaseUrl.toString(), ...(supabase ? { ssl: { ca: readFileSync(new URL('../certs/supabase-prod-ca-2021.crt', import.meta.url), 'utf8'), rejectUnauthorized: true } } : {}), max: 3, connectionTimeoutMillis: 10000, idleTimeoutMillis: 10000 });
   pool.on('error', () => console.error('Postgres idle connection failed.'));
   let ready;
   async function initialize() {
@@ -51,9 +51,9 @@ export function createPostgresStore(connectionString, { bootstrap = process.env.
         }
         const result = await client.query(`SELECT payload FROM leleka_private.leleka_mvp_state WHERE id = 1${mutating ? ' FOR UPDATE' : ''}`);
         const database = result.rows[0].payload;
-        const previous = JSON.stringify(database);
+        const previous = mutating ? JSON.stringify(database) : undefined;
         const response = await action(database);
-        const next = JSON.stringify(database);
+        const next = mutating ? JSON.stringify(database) : undefined;
         if (mutating && next !== previous) await client.query('UPDATE leleka_private.leleka_mvp_state SET payload = $1::jsonb, updated_at = now() WHERE id = 1', [next]);
         if (transaction) { await client.query('COMMIT'); transaction = false; }
         return response;

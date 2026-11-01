@@ -48,5 +48,5 @@ export function createWall({api,getState,escapeHTML:e,toast,renderShell}){
       if(action==='delete-comment')void run(async epoch=>{await request(`/${threadId}/comments/${id}`,{method:'DELETE'});if(epoch===generation)await refresh();});
     }));
   }
-  return {render,bind,refresh,async start(){generation++;entries=[];cursor=null;thread=null;threadId=null;mode='all';draft='';draftId=crypto.randomUUID();busy=false;loading=true;loadError=false;replies.clear();const target=new URL(location.href).searchParams.get('wall');if(target&&/^[a-f0-9-]{36}$/.test(target)){threadId=target;getState().view='wall';}await refresh();},stop(){generation++;entries=[];thread=null;threadId=null;draft='';replies.clear();busy=false;}};
+  return {render,bind,refresh,async start(){generation++;entries=[];cursor=null;thread=null;threadId=null;mode='all';draft='';draftId=crypto.randomUUID();busy=false;loading=true;loadError=false;replies.clear();const target=new URL(location.href).searchParams.get('wall');if(target&&/^[a-f0-9-]{36}$/.test(target)){threadId=target;getState().view='wall';}if(getState().view==='wall')await refresh();else loading=false;},stop(){generation++;entries=[];thread=null;threadId=null;draft='';replies.clear();busy=false;}};
 }

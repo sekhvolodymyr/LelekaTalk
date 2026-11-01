@@ -39,7 +39,8 @@ export function createCloudApp({ store, allowedOrigins, secureCookies = true, tr
     const output = captureResponse();
     const app = createApp({ ...options, managedDatabase: database, rateLimits: rates(database), pushService });
     await app.listeners('request')[0](request, output);
-    output.pendingPush = Boolean(database.pushOutbox?.length);
+    const now=Date.now();
+    output.pendingPush = Boolean(database.pushOutbox?.some(job=>job.expiresAt>now&&job.attempts<4&&job.nextAttempt<=now&&!(job.leaseUntil>now)));
     return output;
   }
   return http.createServer(async (request, response) => {

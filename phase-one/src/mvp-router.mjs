@@ -4,6 +4,7 @@ import { validSubscription, queueMessagePush } from './push-service.mjs';
 import { createCallRouter } from './call-router.mjs';
 import { createWallRouter } from './wall-router.mjs';
 import { createStudioRouter } from './studio-router.mjs';
+import {limitWrites,requireStorage} from './resource-limits.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TOPICS = ['creative', 'technology', 'learning', 'life'];
@@ -22,6 +23,11 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     if (accepted && !isMember(chat, user.id)) throw fail(403, 'invitation_required');
     return chat;
   }
+  let messageCounts, countedUser, countedSource, countedLength;
+  function countMessages(chatId,userId){
+    if(!messageCounts||countedUser!==userId||countedSource!==db.messages||countedLength!==db.messages.length){countedUser=userId;countedSource=db.messages;countedLength=db.messages.length;messageCounts=new Map();for(const message of db.messages)if(message.audience.includes(userId))messageCounts.set(message.chatId,(messageCounts.get(message.chatId)??0)+1);}
+    return messageCounts.get(chatId)??0;
+  }
   const chatDTO = (chat, user) => ({
     id: chat.id, type: chat.type, title: chat.title, ownerId: chat.ownerId, revision: chat.revision,
     members: chat.members.filter(member => ['accepted', 'invited', 'left'].includes(member.status)).map(member => ({ ...person(userById(member.userId)), status: member.status })),
@@ -31,7 +37,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     blockedByMe: chat.type === 'direct' && db.blocks.some(item => item.from === user.id && chat.members.some(member => member.userId === item.to)),
     createdAt: chat.createdAt,
     updatedAt: chat.updatedAt,
-    messageCount: db.messages.filter(message => message.chatId === chat.id && message.audience.includes(user.id)).length,
+    messageCount: countMessages(chat.id,user.id),
   });
   function cleanText(value, maximum, code = 'invalid_text') {
     if (typeof value !== 'string' || !value.trim() || value.trim().length > maximum) throw fail(400, code);
@@ -65,11 +71,16 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     const owner = userById(channel.ownerId);
     return { id: channel.id, title: channel.title, description: channel.description, topic: channel.topic, creatorName: owner.creatorName, personalUsername: owner.showProfileLink ? owner.username : null, isOwner: channel.ownerId === user.id, following: channel.followers.includes(user.id), followers: channel.followers.length, createdAt: channel.createdAt };
   };
+  let commentIndex,commentSource,commentLength;
+  const commentsFor=id=>{if(!commentIndex||commentSource!==db.comments||commentLength!==db.comments.length){commentSource=db.comments;commentLength=db.comments.length;commentIndex=new Map();for(const c of db.comments){if(!commentIndex.has(c.postId))commentIndex.set(c.postId,[]);commentIndex.get(c.postId).push(c);}}return commentIndex.get(id)??[];};
+  const commentDTO=(comment,user)=>({id:comment.id,text:comment.text,authorName:comment.authorName,createdAt:comment.createdAt,isMine:comment.authorId===user.id});
   const postDTO = (post, user) => ({
     id: post.id, text: post.text, createdAt: post.createdAt,
     channel: channelDTO(db.channels.find(channel => channel.id === post.channelId), user),
     likes: post.likes.length, liked: post.likes.includes(user.id),
-    comments: db.comments.filter(comment => comment.postId === post.id).map(comment => ({ id: comment.id, text: comment.text, authorName: comment.authorName, createdAt: comment.createdAt, isMine: comment.authorId === user.id })),
+    comments: commentsFor(post.id).slice(-10).map(c=>commentDTO(c,user)),
+    commentCount: commentsFor(post.id).length,
+    commentsCursor: commentsFor(post.id).length>10?commentsFor(post.id).at(-10).id:null,
   });
 
   const callRouter = createCallRouter({ database, db, getSession, requireChat, blocked, person, userById, encrypted, readBody, persist, fail });
@@ -81,6 +92,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
     if (!user) throw fail(401, 'authentication_required');
     const pathname = url.pathname.slice('/api/mvp'.length);
     const method = request.method;
+    if(['POST','PATCH'].includes(method)&&!/\/(end|leave)$/.test(pathname))limitWrites(database,user.id);
     const reply = (status, value) => { send(response, status, value); return true; };
     if (await callRouter(request,url,user,reply)) return true;
     if (await wallRouter(request,url,user,reply)) return true;
@@ -157,6 +169,8 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
         const targets = body.userIds.map(id => targetUser(id, user));
         chat = { id: randomUUID(), type: 'group', title, ownerId: user.id, revision: 1, members: [{ userId: user.id, status: 'accepted', joinedAt: now }, ...targets.map(target => ({ userId: target.id, status: 'invited', joinedAt: null }))], createdAt: now, updatedAt: now };
       } else throw fail(400, 'invalid_chat_type');
+      requireStorage(database,user.id,chat);
+      if(db.chats.filter(c=>c.ownerId===user.id).length>=1000)throw fail(429,'storage_limit');
       db.chats.push(chat);
       persist();
       return reply(201, { chat: chatDTO(chat, user) });
@@ -209,7 +223,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
         const before = Number(url.searchParams.get('before') ?? Number.MAX_SAFE_INTEGER);
         if (!Number.isSafeInteger(after) || !Number.isSafeInteger(before) || after < 0 || before < 1) throw fail(400, 'invalid_cursor');
         const messages = db.messages.filter(message => message.chatId === chat.id && message.audience.includes(user.id) && message.seq > after && message.seq < before);
-        return reply(200, { messages: messages.slice(-100), hasMore: messages.length > 100, chat: chatDTO(chat, user), serverTime: Date.now() });
+        return reply(200, { messages: url.searchParams.has('after')?messages.slice(0,100):messages.slice(-100), hasMore: messages.length > 100, chat: chatDTO(chat, user), serverTime: Date.now() });
       }
       if (action === 'messages' && method === 'POST') {
         if (!user.crypto || !chat.members.every(member => member.status !== 'invited' || chat.type === 'group')) throw fail(403, 'invitation_required');
@@ -228,6 +242,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
         }
         const now = new Date().toISOString();
         const message = { id: messageId, seq: (db.messages.at(-1)?.seq ?? 0) + 1, chatId: chat.id, senderId: user.id, ciphertext, audience: chat.members.filter(member => member.status === 'accepted').map(member => member.userId), createdAt: now };
+        requireStorage(database,user.id,message);
         db.messages.push(message);
         queueMessagePush(database, chat, message);
         chat.updatedAt = now;
@@ -239,6 +254,8 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
       const body = await readBody(request);
       requireChat(body.chatId, user);
       if (Object.keys(body).some(key => !['chatId', 'description'].includes(key))) throw fail(400, 'description_only');
+      if(db.reports.filter(r=>r.reporterId===user.id).length>=1000)throw fail(429,'storage_limit');
+      requireStorage(database,user.id,body);
       db.reports.push({ id: randomUUID(), reporterId: user.id, chatId: body.chatId, description: cleanText(body.description, 2000), createdAt: new Date().toISOString() });
       persist();
       return reply(201, { ok: true });
@@ -254,6 +271,8 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
       const description = typeof body.description === 'string' ? body.description.trim() : '';
       if (description.length > 500 || !TOPICS.includes(body.topic)) throw fail(400, 'invalid_channel');
       const channel = { id: randomUUID(), ownerId: user.id, title, description, topic: body.topic, followers: [user.id], createdAt: new Date().toISOString() };
+      requireStorage(database,user.id,channel);
+      if(db.channels.filter(c=>c.ownerId===user.id).length>=100)throw fail(429,'storage_limit');
       db.channels.push(channel);
       persist();
       return reply(201, { channel: channelDTO(channel, user) });
@@ -276,6 +295,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
         if (channel.ownerId !== user.id) throw fail(403, 'owner_required');
         const body = await readBody(request);
         const post = { id: randomUUID(), channelId: channel.id, text: cleanText(body.text, 5000), likes: [], createdAt: new Date().toISOString() };
+        requireStorage(database,user.id,post);
         db.posts.push(post);
         persist();
         return reply(201, { post: postDTO(post, user) });
@@ -307,9 +327,19 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
         persist();
         return reply(200, { post: postDTO(post, user) });
       }
+      if(action==='comments'&&method==='GET'){
+        const all=commentsFor(post.id),before=url.searchParams.get('before');
+        let end=all.length;if(before){end=all.findIndex(c=>c.id===before);if(end<0)throw fail(400,'invalid_cursor');}
+        const page=all.slice(Math.max(0,end-50),end);
+        return reply(200,{comments:page.map(c=>commentDTO(c,user)),nextCursor:end>50?page[0].id:null});
+      }
       if (action === 'comments' && method === 'POST') {
         const body = await readBody(request);
-        db.comments.push({ id: randomUUID(), postId: post.id, authorId: user.id, authorName: user.activeProfile === 'creator' ? user.creatorName : user.personalName, text: cleanText(body.text, 2000), createdAt: new Date().toISOString() });
+        const comment={id:randomUUID(),postId:post.id,authorId:user.id,authorName:user.activeProfile==='creator'?user.creatorName:user.personalName,text:cleanText(body.text,2000),createdAt:new Date().toISOString()};
+        limitWrites(database,user.id,'channel-comments',30);
+        if(commentsFor(post.id).length>=1000)throw fail(429,'comment_limit');
+        requireStorage(database,user.id,comment);
+        db.comments.push(comment);commentIndex=null;
         persist();
         return reply(201, { post: postDTO(post, user) });
       }
@@ -331,6 +361,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
       const ciphertext = await encrypted(body.ciphertext);
       if (db.plans.some(plan => plan.id === id)) throw fail(409, 'record_exists');
       const plan = { id, ownerId: user.id, date: day, time, ciphertext, done: false, createdAt: new Date().toISOString() };
+      requireStorage(database,user.id,plan);
       db.plans.push(plan);
       persist();
       return reply(201, { plan: { ...plan, ownerId: undefined } });
@@ -350,13 +381,13 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
           if(body.date!==undefined)changes.date=date(body.date);
           if(body.time!==undefined){if(typeof body.time!=='string'||body.time&&!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(body.time))throw fail(400,'invalid_time');changes.time=body.time;}
           if(body.ciphertext!==undefined)changes.ciphertext=await encrypted(body.ciphertext);
+          requireStorage(database,user.id,{...record,...changes},record);
           Object.assign(record,changes);
         } else {
           const day = date(body.date);
           if (typeof body.completed !== 'boolean') throw fail(400, 'invalid_done');
-          record.completedDates = record.completedDates.filter(value => value !== day);
-          if (body.completed) record.completedDates.push(day);
-          record.completedDates.sort();
+          const completedDates=record.completedDates.filter(value=>value!==day);if(body.completed)completedDates.push(day);completedDates.sort();
+          requireStorage(database,user.id,{...record,completedDates},record);record.completedDates=completedDates;
         }
       }
       persist();
@@ -369,6 +400,7 @@ export function createMvpRouter({ database, persist, getUser, getSession, readBo
       const ciphertext = await encrypted(body.ciphertext);
       if (db.habits.some(habit => habit.id === id)) throw fail(409, 'record_exists');
       const habit = { id, ownerId: user.id, ciphertext, completedDates: [], createdAt: new Date().toISOString() };
+      requireStorage(database,user.id,habit);
       db.habits.push(habit);
       persist();
       return reply(201, { habit: { ...habit, ownerId: undefined } });

@@ -104,6 +104,13 @@ const app = document.querySelector('#app');
 const dialog = document.querySelector('#settings-dialog');
 let installPrompt = null;
 let toastTimer;
+let authEpoch=0;
+async function startModules(account,generation){
+  await Promise.all([mvp.start(account),wall.start()]);
+  if(generation!==authEpoch||state.user?.id!==account.id)return;
+  await studio.start(account);
+  if(generation===authEpoch&&state.user?.id===account.id)renderShell();
+}
 const text = key => words[state.language][key];
 const wall = createWall({api,getState:()=>state,escapeHTML,toast,renderShell});
 const studio = createStudio({api,getState:()=>state,escapeHTML,toast});
@@ -177,15 +184,16 @@ async function submitAuth(event) {
   const button = form.querySelector('button[type="submit"]');
   const errorElement = form.querySelector('#auth-error');
   const fields = new FormData(form);
-  const registration = state.authMode === 'register';
+  const registration = state.authMode === 'register', generation=++authEpoch;
   state.busy = true;
   button.disabled = true;
   button.textContent = text('working');
   errorElement.hidden = true;
   try {
     const result = await api(registration ? 'register' : 'login', { method: 'POST', body: { email: fields.get('email'), password: fields.get('password'), name: fields.get('name'), username: fields.get('username'), ageConfirmed: fields.get('age') === 'on' } });
+    if(generation!==authEpoch)return;
     state.user = result.user;
-    await Promise.all([mvp.start(state.user), wall.start()]); await studio.start(state.user); renderShell();
+    await startModules(state.user,generation);
   } catch (error) {
     errorElement.textContent = error.message;
     errorElement.hidden = false;
@@ -318,9 +326,16 @@ document.addEventListener('click', async event => {
   }
   if (action === 'logout') {
     if(!await studio.beforeLeave(true))return;
-    state.busy = true;
-    try { await studio.stop(); await api('logout', { method: 'POST' }); wall.stop(); await mvp.stop(state.user.id); state.user = null; dialog.close(); renderAuth(); }
-    catch (error) { toast(error.message); }
+    ++authEpoch;state.busy = true;
+    const stopped=mvp.stop(state.user.id);wall.stop();
+    try { await studio.stop(); await stopped; await api('logout', { method: 'POST' }); state.user = null; dialog.close(); renderAuth(); }
+    catch (error) {
+      // A failed logout must not leave a ready-looking shell with stopped
+      // modules. Recheck the server; any surviving session starts locked.
+      try { state.user=(await api('me')).user;await startModules(state.user,authEpoch); }
+      catch { state.user=null;dialog.close();renderAuth(); }
+      toast(error.message);
+    }
     finally { state.busy = false; mvp.syncBusyControls(); }
   }
 });
@@ -333,10 +348,12 @@ window.addEventListener('beforeinstallprompt', event => {
   if (state.user) renderShell();
 });
 async function start() {
+  const generation=authEpoch;
   applyPreferences();
   try { state.user = (await api('me')).user; }
   catch (error) { if (error.status !== 401) toast(error.message); }
-  if (state.user) { await Promise.all([mvp.start(state.user), wall.start()]); await studio.start(state.user); renderShell(); }
+  if(generation!==authEpoch)return;
+  if (state.user) { await startModules(state.user,generation); }
   else renderAuth();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { /* Online operation does not depend on installation support. */ });
 }

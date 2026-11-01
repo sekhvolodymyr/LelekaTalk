@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, scrypt, timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ const publicDirectory = path.join(directory, 'public');
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const BODY_LIMIT = 128 * 1024;
 const hash = value => createHash('sha256').update(value).digest('hex');
+const passwordKey = (password,salt) => new Promise((resolve,reject)=>scrypt(password,salt,64,(error,key)=>error?reject(error):resolve(key)));
 
 export function createApp({ dataDirectory = path.join(directory, 'data'), logoPath = process.env.LELEKA_LOGO ?? 'C:/Users/volod/Desktop/LelekaTalk/Leleka Talk logo.png', managedDatabase, onPersist, allowedOrigins = [], secureCookies = false, rateLimits = new Map(), clientAddress, pushService = createPushService() } = {}) {
   if (!managedDatabase) mkdirSync(dataDirectory, { recursive: true });
@@ -140,9 +141,12 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
         if (body.ageConfirmed !== true) throw fail(400, 'age_confirmation_required');
         if (database.users.some(item => item.email === email || item.username === username)) throw fail(409, 'account_conflict');
         const salt = randomBytes(16).toString('hex');
+        const passwordHash=(await passwordKey(body.password,salt)).toString('hex');
+        // Async hashing yields to other local requests; preserve uniqueness.
+        if (database.users.some(item => item.email === email || item.username === username)) throw fail(409, 'account_conflict');
         const user = {
           id: randomUUID(), email, username, personalName: name, creatorName: name,
-          salt, passwordHash: scryptSync(body.password, salt, 64).toString('hex'),
+          salt, passwordHash,
           activeProfile: 'personal', showProfileLink: false, createdAt: new Date().toISOString(),
           ageConfirmed: true,
         };
@@ -155,7 +159,7 @@ export function createApp({ dataDirectory = path.join(directory, 'data'), logoPa
         const body = await readBody(request);
         if (typeof body.password !== 'string' || body.password.length > 256) throw fail(401, 'invalid_credentials');
         const user = database.users.find(item => item.email === normalizeEmail(body.email));
-        const candidate = scryptSync(body.password, user?.salt ?? 'missing-account-salt', 64);
+        const candidate = await passwordKey(body.password, user?.salt ?? 'missing-account-salt');
         const expected = user ? Buffer.from(user.passwordHash, 'hex') : Buffer.alloc(64);
         if (!timingSafeEqual(candidate, expected) || !user) throw fail(401, 'invalid_credentials');
         return send(response, 200, { user: publicUser(user) }, { 'Set-Cookie': issueSession(user) });

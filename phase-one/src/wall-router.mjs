@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {requireStorage} from './resource-limits.mjs';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export function createWallRouter({database,blocked,readBody,persist,fail}){
@@ -6,10 +7,11 @@ export function createWallRouter({database,blocked,readBody,persist,fail}){
     const path=url.pathname.slice('/api/mvp'.length),method=request.method;
     if(path!=='/wall'&&!path.startsWith('/wall/'))return false;
     const wall=database.wall??={posts:[],comments:[],reposts:[],sequence:0};
-    const author=id=>{const u=database.users.find(u=>u.id===id);return {id,name:u?.personalName??'—',username:u?.username??''};};
+    const usersById=new Map(database.users.map(u=>[u.id,u]));
+    const author=id=>{const u=usersById.get(id);return {id,name:u?.personalName??'—',username:u?.username??''};};
     const visible=post=>post&&!blocked(user.id,post.authorId);
     const requirePost=id=>{const post=wall.posts.find(p=>p.id===id);if(!visible(post))throw fail(404,'post_not_found');return post;};
-    const comments=post=>wall.comments.filter(c=>c.postId===post.id&&!blocked(user.id,c.authorId));
+    let commentIndex;const comments=post=>{if(!commentIndex){commentIndex=new Map();for(const c of wall.comments)if(!blocked(user.id,c.authorId)){if(!commentIndex.has(c.postId))commentIndex.set(c.postId,[]);commentIndex.get(c.postId).push(c);}}return commentIndex.get(post.id)??[];};
     const dto=post=>({id:post.id,text:post.text,author:author(post.authorId),createdAt:post.createdAt,isMine:post.authorId===user.id,likes:post.likes.length,liked:post.likes.includes(user.id),commentCount:comments(post).length,reposts:wall.reposts.filter(r=>r.postId===post.id).length,reposted:wall.reposts.some(r=>r.postId===post.id&&r.authorId===user.id)});
     const commentDTO=c=>({id:c.id,text:c.text,createdAt:c.createdAt,author:author(c.authorId),isMine:c.authorId===user.id});
     const text=(value,max)=>{if(typeof value!=='string'||!value.trim()||value.trim().length>max)throw fail(400,'invalid_text');return value.trim();};
@@ -19,8 +21,9 @@ export function createWallRouter({database,blocked,readBody,persist,fail}){
       const before=Number(url.searchParams.get('before')??Number.MAX_SAFE_INTEGER);
       if(!Number.isSafeInteger(before)||before<1)throw fail(400,'invalid_cursor');
       const mine=url.searchParams.get('mode')==='mine';
-      const entries=[...wall.posts.filter(visible).map(post=>({id:post.id,seq:post.seq,createdAt:post.createdAt,post:dto(post),repostBy:null,owner:post.authorId})),...wall.reposts.filter(r=>!blocked(user.id,r.authorId)).flatMap(r=>{const post=wall.posts.find(p=>p.id===r.postId);return visible(post)?[{id:r.id,seq:r.seq,createdAt:r.createdAt,post:dto(post),repostBy:author(r.authorId),owner:r.authorId}]:[];})].filter(entry=>entry.seq<before&&(!mine||entry.owner===user.id)).sort((a,b)=>b.seq-a.seq);
-      const page=entries.slice(0,30).map(({owner,...entry})=>entry);
+      const postsById=new Map(wall.posts.map(p=>[p.id,p]));
+      const entries=[...wall.posts.filter(visible).map(post=>({id:post.id,seq:post.seq,createdAt:post.createdAt,post,repostBy:null,owner:post.authorId})),...wall.reposts.filter(r=>!blocked(user.id,r.authorId)).flatMap(r=>{const post=postsById.get(r.postId);return visible(post)?[{id:r.id,seq:r.seq,createdAt:r.createdAt,post,repostBy:author(r.authorId),owner:r.authorId}]:[];})].filter(entry=>entry.seq<before&&(!mine||entry.owner===user.id)).sort((a,b)=>b.seq-a.seq);
+      const page=entries.slice(0,30).map(({owner,...entry})=>({...entry,post:dto(entry.post)}));
       return reply(200,{entries:page,nextCursor:entries.length>30?page.at(-1).seq:null});
     }
     if(path==='/wall'&&method==='POST'){
@@ -28,6 +31,7 @@ export function createWallRouter({database,blocked,readBody,persist,fail}){
       if(existing){if(existing.authorId!==user.id||existing.text!==value)throw fail(409,'post_conflict');return reply(200,{post:dto(existing)});}
       rate(wall.posts,10);
       const post={id:postId,seq:++wall.sequence,authorId:user.id,text:value,likes:[],createdAt:new Date().toISOString()};
+      requireStorage(database,user.id,post);
       wall.posts.push(post);persist();return reply(201,{post:dto(post)});
     }
     const match=/^\/wall\/([a-f0-9-]{36})(?:\/(like|repost|comments)(?:\/([a-f0-9-]{36}))?)?$/.exec(path);
@@ -44,7 +48,7 @@ export function createWallRouter({database,blocked,readBody,persist,fail}){
       if(action==='like'){post.likes=post.likes.filter(uid=>uid!==user.id);if(value)post.likes.push(user.id);}
       else{
         const existing=wall.reposts.find(r=>r.postId===postId&&r.authorId===user.id);
-        if(value&&!existing){rate(wall.reposts,20);wall.reposts.push({id:randomUUID(),seq:++wall.sequence,postId,authorId:user.id,createdAt:new Date().toISOString()});}
+        if(value&&!existing){rate(wall.reposts,20);const repost={id:randomUUID(),seq:wall.sequence+1,postId,authorId:user.id,createdAt:new Date().toISOString()};requireStorage(database,user.id,repost);wall.sequence++;wall.reposts.push(repost);}
         if(!value)wall.reposts=wall.reposts.filter(r=>r!==existing);
       }
       persist();return reply(200,{post:dto(post)});
@@ -53,7 +57,7 @@ export function createWallRouter({database,blocked,readBody,persist,fail}){
       const body=await readBody(request),commentId=id(body.id),value=text(body.text,1000),existing=wall.comments.find(c=>c.id===commentId);
       if(existing){if(existing.authorId!==user.id||existing.postId!==postId||existing.text!==value)throw fail(409,'comment_conflict');return reply(200,{comment:commentDTO(existing),post:dto(post)});}
       rate(wall.comments,30);if(wall.comments.filter(c=>c.postId===postId).length>=1000)throw fail(400,'comment_limit');
-      const comment={id:commentId,postId,authorId:user.id,text:value,createdAt:new Date().toISOString()};wall.comments.push(comment);persist();return reply(201,{comment:commentDTO(comment),post:dto(post)});
+      const comment={id:commentId,postId,authorId:user.id,text:value,createdAt:new Date().toISOString()};requireStorage(database,user.id,comment);wall.comments.push(comment);commentIndex=null;persist();return reply(201,{comment:commentDTO(comment),post:dto(post)});
     }
     if(action==='comments'&&commentId&&method==='DELETE'){
       const comment=wall.comments.find(c=>c.id===commentId&&c.postId===postId);if(!comment)throw fail(404,'record_not_found');
