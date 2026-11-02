@@ -7,6 +7,11 @@ node_modules/
 *.log
 
 # Local tools and operating system files
+.tools/
+artifacts/
+*.jks
+*.keystore
+**/key.properties
 .codex/
 .agents/
 .aws/
