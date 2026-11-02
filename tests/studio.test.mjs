@@ -66,6 +66,22 @@ test('studio limits viewers, isolates encrypted signaling and supports comments,
   assert.equal((await call(viewer,`/${id}?device=${viewer.deviceId}`,'GET')).status,404);
 });
 
+test('studio validates comment text before retry lookup and preserves the original comment',async t=>{
+  const f=await fixture(t),[host]=f.actors,id=randomUUID(),commentId=randomUUID();
+  const comment=text=>f.call(host,`mvp/studio/${id}/comment`,'POST',{id:commentId,text});
+  assert.equal((await f.call(host,'mvp/studio','POST',{id,title:'Live'})).status,201);
+  assert.equal((await comment('Original')).status,201);
+  for(const text of [123,true,{},[],null,'',' '.repeat(3),'x'.repeat(301)]){
+    const result=await comment(text);
+    assert.equal(result.status,400,`invalid retry text ${JSON.stringify(text)} must be rejected`);
+    assert.equal(result.data.error,'invalid_text');
+  }
+  assert.equal((await comment('  Original  ')).status,200,'normalized retries remain idempotent');
+  assert.equal((await comment('Changed')).status,409,'a retry cannot replace the comment');
+  assert.equal(f.state().studioLives[0].comments.length,1);
+  assert.equal(f.state().studioLives[0].comments[0].text,'Original');
+});
+
 test('abandoned and blocked streams disappear; logout removes host state and viewer signaling',async t=>{
   const f=await fixture(t),[host,viewer]=f.actors;
   const create=async()=>{const id=randomUUID();await f.call(host,'mvp/studio','POST',{id,title:'Live'});return id;};

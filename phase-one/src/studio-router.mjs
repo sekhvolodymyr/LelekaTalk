@@ -65,11 +65,13 @@ export function createStudioRouter({database,getSession,blocked,userById,encrypt
     if(action==='like'){if(typeof body.liked!=='boolean')throw fail(400,'invalid_payload');room.likes=room.likes.filter(id=>id!==user.id);if(body.liked)room.likes.push(user.id);persist();return reply(200,{stream:dto(room)});}
     if(action==='share'){if(!room.shares.includes(user.id))room.shares.push(user.id);persist();return reply(200,{stream:dto(room)});}
     if(action==='comment'){
+      if(typeof body.text!=='string')throw fail(400,'invalid_text');
+      const text=body.text.trim();
+      if(!text||text.length>300)throw fail(400,'invalid_text');
       const id=uuid(body.id),existing=room.comments.find(c=>c.id===id);
-      if(existing){if(existing.authorId!==user.id||existing.text!==body.text?.trim())throw fail(409,'comment_conflict');return reply(200,{ok:true});}
-      if(typeof body.text!=='string'||!body.text.trim()||body.text.trim().length>300)throw fail(400,'invalid_text');
+      if(existing){if(existing.authorId!==user.id||existing.text!==text)throw fail(409,'comment_conflict');return reply(200,{ok:true});}
       if(room.comments.some(c=>c.authorId===user.id&&now-c.createdAt<1000))throw fail(429,'too_many_attempts');
-      room.comments.push({id,authorId:user.id,authorName:user.activeProfile==='creator'?user.creatorName:user.personalName,text:body.text.trim(),createdAt:now});room.comments=room.comments.slice(-80);persist();return reply(201,{ok:true});
+      room.comments.push({id,authorId:user.id,authorName:user.activeProfile==='creator'?user.creatorName:user.personalName,text,createdAt:now});room.comments=room.comments.slice(-80);persist();return reply(201,{ok:true});
     }
     throw fail(404,'not_found');
   };
