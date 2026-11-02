@@ -29,6 +29,7 @@ class _LelekaAppState extends State<LelekaApp> {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: session,
     builder: (context, _) => MaterialApp(
+      key: ValueKey('${session.user?['id'] ?? 'signed-out'}:${session.epoch}'),
       title: 'LelekaTalk',
       debugShowCheckedModeBanner: false,
       theme: session.palette.theme,
@@ -198,7 +199,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             'ageConfirmed': age,
                           },
                         }, register);
-                        password.clear();
+                        if (mounted) password.clear();
                       },
                       child: Text(register ? 'Створити акаунт' : 'Увійти'),
                     ),

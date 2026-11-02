@@ -11,6 +11,19 @@ import 'package:lelekatalk_mobile/rtc.dart';
 import 'package:lelekatalk_mobile/session.dart';
 import 'package:lelekatalk_mobile/theme.dart';
 
+class RouteTestSession extends Session {
+  @override
+  Future<void> initialize() async {
+    starting = false;
+  }
+
+  void expire() {
+    epoch++;
+    user = null;
+    notifyListeners();
+  }
+}
+
 void main() {
   setUpAll(() async {
     final fonts = FontLoader('Leleka')
@@ -19,6 +32,27 @@ void main() {
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
+  testWidgets('expired sessions remove all previously opened private routes', (
+    tester,
+  ) async {
+    final session = RouteTestSession();
+    await tester.pumpWidget(LelekaApp(session: session));
+    await tester.pumpAndSettle();
+    final navigator = Navigator.of(tester.element(find.byType(AuthScreen)));
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Synthetic private screen')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Synthetic private screen'), findsOneWidget);
+    session.expire();
+    await tester.pumpAndSettle();
+    expect(find.text('Synthetic private screen'), findsNothing);
+    expect(find.byType(AuthScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
   testWidgets(
     'native authentication fits phone widths and exposes registration fields',
