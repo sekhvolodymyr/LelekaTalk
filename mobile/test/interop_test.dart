@@ -90,6 +90,10 @@ void main() {
             'text': 'Привіт із Flutter 📱',
           };
       final encrypted = await vault.encrypt(outgoing, [fixture['alice']]);
+      expect(
+        await vault.decrypt(encrypted, vault.identity!, outgoing),
+        outgoing,
+      );
       await api.post('mvp/chats/${chat['id']}/messages', {
         'id': id,
         'revision': chat['revision'],

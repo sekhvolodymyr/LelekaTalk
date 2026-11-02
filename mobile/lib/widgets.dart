@@ -59,6 +59,8 @@ Future<Json?> fieldsDialog(
   Map<String, String> fields, {
   Json initial = const {},
   int maxLength = 5000,
+  Map<String, int> limits = const {},
+  Set<String> optional = const {},
 }) async {
   final controllers = {
     for (final key in fields.keys)
@@ -88,9 +90,10 @@ Future<Json?> fieldsDialog(
                           entry.key == 'text' || entry.key == 'description'
                           ? 5
                           : 1,
-                      maxLength: maxLength,
+                      maxLength: limits[entry.key] ?? maxLength,
                       validator: (value) =>
-                          value == null || value.trim().isEmpty
+                          !optional.contains(entry.key) &&
+                              (value == null || value.trim().isEmpty)
                           ? 'Заповніть поле'
                           : null,
                     ),

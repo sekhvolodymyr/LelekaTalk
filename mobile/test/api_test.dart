@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -56,5 +57,21 @@ void main() {
   });
   test('cleartext remote API hosts are rejected', () {
     expect(() => Api(baseUrl: 'http://example.com'), throwsArgumentError);
+  });
+  test('an old failed request cannot revoke a newer login', () async {
+    final pending = Completer<http.Response>();
+    var expired = false;
+    final api = Api(
+      client: MockClient((request) async {
+        if (request.url.path == '/api/me') return pending.future;
+        return http.Response('{"user":{"id":"new-user"}}', 200);
+      }),
+    );
+    api.onExpired = () => expired = true;
+    final stale = expectLater(api.get('me'), throwsStateError);
+    await api.post('login', {'email': 'new@example.test', 'password': 'test'});
+    pending.complete(http.Response('{"error":"authentication_required"}', 401));
+    await stale;
+    expect(expired, isFalse);
   });
 }

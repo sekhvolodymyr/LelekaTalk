@@ -13,6 +13,7 @@ class Vault {
   Json? identity;
   PrivateKeyInterface? _privateKey;
   int _epoch = 0;
+  bool remembered = true;
   Vault(this.api);
   bool get unlocked => _privateKey != null;
   static String fingerprint(KeyInterface key) =>
@@ -94,9 +95,20 @@ class Vault {
     if (fingerprint(key) != _fingerprint.toLowerCase())
       throw StateError('key_changed');
     _guard(epoch);
-    await api.storage.write(key: _deviceKey, value: normalized);
-    _guard(epoch);
     _privateKey = key;
+    final deviceKey = _deviceKey;
+    try {
+      await api.storage.write(key: deviceKey, value: normalized);
+      remembered = true;
+    } catch (_) {
+      // A newly generated recovery code must still reach the user if Android
+      // storage is temporarily unavailable. Keep the key in memory this session.
+      remembered = false;
+    }
+    if (epoch != _epoch) {
+      await api.storage.delete(key: deviceKey);
+      _guard(epoch);
+    }
   }
 
   Future<void> close() async {
@@ -110,6 +122,14 @@ class Vault {
   Future<KeyInterface> publicKey(Json person) async {
     final epoch = _epoch;
     final fingerprint = (person['fingerprint'] as String).toLowerCase();
+    if (person['id'] == identity!['id']) {
+      final ownKey = OpenPGP.readPublicKey(person['publicKey']);
+      if (fingerprint != _fingerprint.toLowerCase() ||
+          Vault.fingerprint(ownKey) != fingerprint) {
+        throw StateError('key_changed');
+      }
+      return ownKey;
+    }
     final pin = 'peer:${api.origin.origin}:${identity!['id']}:${person['id']}';
     final previous = await api.storage.read(key: pin);
     _guard(epoch);
@@ -163,7 +183,12 @@ class Vault {
     final verified = message.verify([key], date).toList();
     if (verified.isEmpty || verified.any((v) => !v.isVerified))
       throw StateError('invalid_signature');
-    final text = message.literalData.text;
+    // dart_pg emits binary literal packets even for encryptCleartext; the web
+    // library emits UTF-8 packets. Both carry the same signed JSON bytes.
+    final literal = message.literalData;
+    final text = literal.text.isNotEmpty
+        ? literal.text
+        : utf8.decode(literal.binary);
     if (text.length > 32000) throw StateError('invalid_payload');
     final payload = jsonDecode(text) as Json;
     for (final entry in expected.entries) {

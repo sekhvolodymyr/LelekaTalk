@@ -454,6 +454,48 @@ class _ConversationState extends State<Conversation> {
 
   Future<void> action(String name) async {
     try {
+      if (name == 'keys') {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Відбитки ключів'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Звір відбиток зі співрозмовником через інший надійний канал.',
+                    ),
+                    for (final person
+                        in (chat['members'] as List).cast<Json>()) ...[
+                      const SizedBox(height: 16),
+                      Text(person['name'] ?? person['username'] ?? ''),
+                      SelectableText(
+                        (person['fingerprint'] as String? ?? 'Ключ недоступний')
+                            .toUpperCase(),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Закрити'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
       if (name == 'invite') {
         await Navigator.push(
           context,
@@ -528,6 +570,10 @@ class _ConversationState extends State<Conversation> {
           PopupMenuButton<String>(
             onSelected: action,
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'keys',
+                child: Text('Відбитки ключів'),
+              ),
               if (chat['type'] == 'direct')
                 PopupMenuItem(
                   value: chat['blockedByMe'] == true ? 'unblock' : 'block',

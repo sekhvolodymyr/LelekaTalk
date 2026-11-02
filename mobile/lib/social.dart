@@ -48,19 +48,27 @@ class _WallState extends State<Wall> {
       );
       if (!mounted || mode != mine) return;
       final received = (result['entries'] as List).cast<Json>();
+      int? next = result['nextCursor'];
+      if (!more) {
+        final wanted = entries.length;
+        while (next != null && received.length < wanted) {
+          final page = await widget.session.api.get(
+            'mvp/wall?mode=${mode ? 'mine' : 'all'}&before=$next',
+          );
+          if (!mounted || mode != mine) return;
+          received.addAll((page['entries'] as List).cast<Json>());
+          final int? following = page['nextCursor'];
+          if (following == next) break;
+          next = following;
+        }
+      }
       setState(() {
         if (more) {
           entries = [...entries, ...received];
-          cursor = result['nextCursor'];
-        } else if (entries.length > 30) {
-          final ids = received.map((e) => e['id']).toSet();
-          entries = [
-            ...received,
-            ...entries.where((e) => !ids.contains(e['id'])),
-          ];
+          cursor = next;
         } else {
           entries = received;
-          cursor = result['nextCursor'];
+          cursor = next;
         }
         error = null;
         loading = false;
@@ -328,16 +336,16 @@ class PostCard extends StatelessWidget {
                   ),
                   label: Text('${post['reposts']}'),
                 ),
-              IconButton(
-                tooltip: 'Поширити',
-                onPressed: () => SharePlus.instance.share(
-                  ShareParams(
-                    text:
-                        'https://lelekatalk.vercel.app/${wall ? '?wall=' : '?post='}${post['id']}',
+              if (wall)
+                IconButton(
+                  tooltip: 'Поширити',
+                  onPressed: () => SharePlus.instance.share(
+                    ShareParams(
+                      text: 'https://lelekatalk.vercel.app/?wall=${post['id']}',
+                    ),
                   ),
+                  icon: const Icon(Icons.ios_share, size: 20),
                 ),
-                icon: const Icon(Icons.ios_share, size: 20),
-              ),
             ],
           ),
         ],
@@ -587,10 +595,14 @@ class _ChannelsState extends State<Channels> {
         fields,
       );
     } else {
-      final fields = await fieldsDialog(context, 'Створити канал', {
-        'title': 'Назва',
-        'description': 'Опис',
-      }, maxLength: 500);
+      final fields = await fieldsDialog(
+        context,
+        'Створити канал',
+        {'title': 'Назва', 'description': 'Опис'},
+        maxLength: 500,
+        limits: const {'title': 80},
+        optional: const {'description'},
+      );
       if (fields == null || !mounted) return;
       final selected = await showDialog<String>(
         context: context,

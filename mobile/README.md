@@ -13,7 +13,7 @@ flutter test
 flutter build apk --release
 ```
 
-APK: `build/app/outputs/flutter-apk/app-release.apk`. Поточна release-конфігурація використовує debug-підпис для встановлення тестового APK. Для публікації в магазині потрібен окремий захищений signing key. Ключі не комітити.
+APK: `build/app/outputs/flutter-apk/app-release.apk`. За наявності ігнорованого `android/key.properties` збірка підписується приватним ключем власника. Локальний ключ збережений у `.tools/signing/lelekatalk-release.jks` у корені репозиторію; збережіть резервну копію ключа і `key.properties` для майбутніх оновлень. Без цих файлів CI створює тестовий APK із debug-підписом. Приватні ключі та паролі не комітити.
 
 Локальний API на Android Emulator:
 

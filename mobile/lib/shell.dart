@@ -192,16 +192,20 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         ),
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: page < 5 ? page : 0,
+        selectedIndex: page,
         onDestinationSelected: select,
         destinations: [
-          for (var i = 0; i < 5; i++)
+          for (var i = 0; i < labels.length; i++)
             NavigationDestination(
               icon: Icon(icons[i]),
               label: i == 1
                   ? 'Стіна'
                   : i == 4
                   ? 'Простір'
+                  : i == 5
+                  ? 'Студія'
+                  : i == 6
+                  ? 'ШІ'
                   : labels[i],
             ),
         ],
@@ -240,6 +244,14 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
             TextButton(
               onPressed: s.acknowledgeRecovery,
               child: const Text('Я зберіг код'),
+            ),
+          ] else if (s.vault.identity == null) ...[
+            const Text(
+              'Приватні ключі не завантажилися. Перевір з’єднання та повтори.',
+            ),
+            AsyncAction(
+              onPressed: s.reloadVault,
+              child: const Text('Повторити завантаження ключів'),
             ),
           ] else ...[
             const Text(

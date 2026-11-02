@@ -65,6 +65,7 @@ class Api {
   }
 
   Future<Json> request(String path, {String method = 'GET', Json? body}) async {
+    if (path == 'login' || path == 'register') _epoch++;
     final epoch = _epoch;
     final request = http.Request(method, origin.resolve('/api/$path'));
     request.followRedirects = false;

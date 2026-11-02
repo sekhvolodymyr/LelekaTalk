@@ -363,32 +363,41 @@ class StudioScreenState extends State<StudioScreen> {
   }
 
   Future<void> watch(Json value) async {
+    if (busy) return;
     if (!s.vault.unlocked) throw StateError('keys_locked');
     if (hosting) throw StateError('Спочатку завершіть свій ефір.');
     await leave();
     busy = true;
-    generation++;
+    final epoch = ++generation;
     try {
       viewerId = const Uuid().v4();
-      room = (await post('/${value['id']}/join', {
-        'viewerId': viewerId,
-      }))['stream'];
+      final joining = viewerId;
+      final result = await post('/${value['id']}/join', {'viewerId': viewerId});
+      if (!mounted || epoch != generation) {
+        try {
+          await post('/${value['id']}/leave', {'viewerId': joining});
+        } catch (_) {}
+        return;
+      }
+      room = result['stream'];
       hosting = false;
       beginHeartbeat();
       if (mounted) setState(() {});
     } catch (_) {
-      await cleanup();
-      rethrow;
+      if (mounted && epoch == generation) {
+        await cleanup();
+        rethrow;
+      }
     } finally {
       busy = false;
     }
   }
 
   Future<void> cleanup() async {
+    generation++;
     await stopRecording();
     heartbeat?.cancel();
-    generation++;
-    for (final p in peers.values) {
+    for (final p in peers.values.toList()) {
       await p.pc.close();
     }
     peers.clear();

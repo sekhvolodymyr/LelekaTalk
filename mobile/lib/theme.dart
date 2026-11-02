@@ -46,6 +46,8 @@ class LelekaPalette {
       backgroundColor: surface,
       indicatorColor: panel,
       height: 68,
+      labelTextStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 9)),
+      iconTheme: const WidgetStatePropertyAll(IconThemeData(size: 20)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,

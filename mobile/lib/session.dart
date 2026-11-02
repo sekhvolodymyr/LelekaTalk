@@ -64,6 +64,12 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> reloadVault() async {
+    if (user == null) return;
+    recovery = await vault.open(user!);
+    notifyListeners();
+  }
+
   void acknowledgeRecovery() {
     recovery = null;
     notifyListeners();
