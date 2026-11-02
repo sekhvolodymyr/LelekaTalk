@@ -36,7 +36,7 @@ export function createCallRouter({ database, db, getSession, requireChat, blocke
     if(path==='/calls') {
       const media=body.media??'audio';
       if(!['audio','video'].includes(media))throw fail(400,'invalid_call_media');
-      if(!UUID.test(body.id))throw fail(400,'invalid_id');
+      if(typeof body.id!=='string'||!UUID.test(body.id))throw fail(400,'invalid_id');
       const chat=requireChat(body.chatId,user,true);
       if(chat.type!=='direct'||chat.members.length!==2||chat.members.some(m=>m.status!=='accepted'))throw fail(403,'call_contact_required');
       const callee=chat.members.find(m=>m.userId!==user.id);

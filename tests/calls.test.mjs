@@ -35,6 +35,18 @@ test('only mutually accepted unblocked direct contacts can call; outsiders canno
   assert.equal((await f.list(bob)).data.calls[0].callerId,alice.id);
   assert.ok(!JSON.stringify(f.state().calls).includes('private SDP'));
 });
+test('call creation rejects non-string IDs without occupying the contact',async t=>{
+  const f=await fixture(t),[alice]=f.actors;
+  for(const id of [[randomUUID()],{},123,null,'invalid']){
+    const result=await f.call(alice,'mvp/calls','POST',{id,chatId:f.chats[0].id,offer:ciphertext});
+    assert.equal(result.status,400,`invalid call ID ${JSON.stringify(id)} must be rejected`);
+    assert.equal(result.data.error,'invalid_id');
+  }
+  assert.deepEqual((await f.list(alice)).data.calls,[]);
+  const created=await f.create();assert.equal(created.status,201);
+  assert.equal((await f.call(alice,`mvp/calls/${created.data.call.id}/end`,'POST',{})).status,200);
+});
+
 test('answer is bound to one receiving device and busy participants cannot start a second call',async t=>{
   const f=await fixture(t),[alice,bob,other]=f.actors,id=(await f.create()).data.call.id;
   assert.equal((await f.call(alice,`mvp/calls/${id}/answer`,'POST',{answer:ciphertext})).status,403);
