@@ -1,0 +1,33 @@
+name: lelekatalk_mobile
+description: Native LelekaTalk client sharing the web application's encrypted API.
+publish_to: none
+version: 0.3.0+1
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  dart_pg: 2.1.0
+  flutter_secure_storage: ^9.2.4
+  flutter_webrtc: ^1.2.0
+  http: ^1.5.0
+  uuid: ^4.5.1
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.2
+  share_plus: ^11.1.0
+  path_provider: ^2.1.5
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png
+  fonts:
+    - family: Leleka
+      fonts:
+        - asset: assets/fonts/roboto-regular.ttf
+        - asset: assets/fonts/roboto-medium.ttf
+          weight: 600

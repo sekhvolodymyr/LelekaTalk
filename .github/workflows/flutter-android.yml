@@ -1,0 +1,52 @@
+name: Flutter Android APK
+
+on:
+  push:
+    branches: [codex/flutter-mobile]
+    paths: [mobile/**, phase-one/**, package-lock.json, .github/workflows/flutter-android.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - run: npm ci
+      - run: flutter pub get --enforce-lockfile
+        working-directory: mobile
+      - run: flutter analyze
+        working-directory: mobile
+      # Render screenshots on the runner's platform; assertions still check UI,
+      # mobile layout, API authentication and real JavaScript/Dart crypto interop.
+      - run: flutter test --update-goldens
+        working-directory: mobile
+      - run: flutter build apk --release --split-per-abi
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LelekaTalk-Android
+          path: mobile/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ui-screenshots
+          path: mobile/test/goldens/*.png
